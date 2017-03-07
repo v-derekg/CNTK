@@ -240,8 +240,14 @@ def ConvolutionTranspose(filter_shape,        # e.g. (3,3)
         NotImplementedError("ConvolutionTranspose: sharing option currently must be True")
     output_channels_shape = _as_tuple(num_filters)
     input_channels_shape = _as_tuple(num_input_filters)
-    kernel_shape = output_channels_shape + filter_shape
+    kernel_shape = _INFERRED * reduction_rank + filter_shape # kernel := filter plus reductionDims 
+    if output_shape is None: 
+        kernel_shape = output_channels_shape + filter_shape
     param_shape = input_channels_shape + kernel_shape
+
+    output_full_shape = output_shape
+    if output_shape is not None: 
+        output_full_shape = output_channels_shape + output_shape
 
     filter_rank = len(filter_shape)
     init_kernel = _initializer_for(init, Record(filter_rank=filter_rank, output_rank=-1))
@@ -255,7 +261,7 @@ def ConvolutionTranspose(filter_shape,        # e.g. (3,3)
                            sharing=_as_tuple(sharing),
                            auto_padding=_as_tuple(pad),
                            transpose = True, 
-                           output_shape=output_shape, 
+                           output_shape = output_full_shape, 
                            max_temp_mem_size_in_samples=max_temp_mem_size_in_samples)
     if bias:
         apply_x = apply_x + b
@@ -264,7 +270,8 @@ def ConvolutionTranspose(filter_shape,        # e.g. (3,3)
 
 # ConvolutionTranspose1D -- create a 1D convolution transpose layer with optional non-linearity
 def ConvolutionTranspose1D(filter_shape,        # a scalar, e.g., 3 
-                           num_filters=None,
+                           num_filters,
+                           num_input_filters,
                            activation=activation_default_or_None,
                            init=init_default_or_glorot_uniform,
                            pad=pad_default_or_False,
@@ -275,11 +282,12 @@ def ConvolutionTranspose1D(filter_shape,        # a scalar, e.g., 3
                            name=''):
     if len(filter_shape) != 1: 
          raise ValueError('ConvolutionTranspose1D: filter_shape must be a scalar')
-    return ConvolutionTranspose(filter_shape, num_filters, activation, init, pad, strides, True, bias, init_bias, output_shape, name=name)
+    return ConvolutionTranspose(filter_shape, num_filters, num_input_filters, activation, init, pad, strides, True, bias, init_bias, output_shape, name=name)
 
 # ConvolutionTranspose2D -- create a 2D convolution transpose layer with optional non-linearity
 def ConvolutionTranspose2D(filter_shape,        # a 2D tuple, e.g., (3,3) 
-                           num_filters=None,
+                           num_filters,
+                           num_input_filters,
                            activation=activation_default_or_None,
                            init=init_default_or_glorot_uniform,
                            pad=pad_default_or_False,
@@ -290,11 +298,12 @@ def ConvolutionTranspose2D(filter_shape,        # a 2D tuple, e.g., (3,3)
                            name=''):
     if len(filter_shape) != 2: 
          raise ValueError('ConvolutionTranspose2D: filter_shape must be a 2D tuple, e.g. (3,3)')
-    return ConvolutionTranspose(filter_shape, num_filters, activation, init, pad, strides, True, bias, init_bias, output_shape, name=name)
+    return ConvolutionTranspose(filter_shape, num_filters, num_input_filters, activation, init, pad, strides, True, bias, init_bias, output_shape, name=name)
 
 # ConvolutionTranspose3D -- create a 3D convolution transpose layer with optional non-linearity
 def ConvolutionTranspose3D(filter_shape,        # a 3D tuple, e.g., (3,3,3) 
-                           num_filters=None,
+                           num_filters,
+                           num_input_filters, 
                            activation=activation_default_or_None,
                            init=init_default_or_glorot_uniform,
                            pad=pad_default_or_False,
@@ -305,7 +314,7 @@ def ConvolutionTranspose3D(filter_shape,        # a 3D tuple, e.g., (3,3,3)
                            name=''):
     if len(filter_shape) != 3: 
          raise ValueError('ConvolutionTranspose3D: filter_shape must be a 3D tuple, e.g. (3,3,3)')
-    return ConvolutionTranspose(filter_shape, num_filters, activation, init, pad, strides, True, bias, init_bias, output_shape, name=name)
+    return ConvolutionTranspose(filter_shape, num_filters, num_input_filters, activation, init, pad, strides, True, bias, init_bias, output_shape, name=name)
 
 # Create a Pooling layer with one of following types:
 #

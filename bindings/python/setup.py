@@ -111,6 +111,7 @@ if IS_WINDOWS:
         "/EHsc",
         "/DEBUG",
         "/Zi",
+        "/Od",
         "/WX"
     ]
     extra_link_args = ['/DEBUG']
