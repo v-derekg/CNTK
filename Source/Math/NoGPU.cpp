@@ -2141,8 +2141,7 @@ GPUMatrix<ElemType> GPUMatrix<ElemType>::RandomUniform(const size_t rows, const 
 template <class ElemType>
 GPUMatrix<ElemType>& GPUMatrix<ElemType>::AssignOneHot(const GPUMatrix<ElemType>& a, size_t num_class)
 {
-    GPUMatrix<ElemType> mat(0);
-    return mat;
+    retrn *this;
 }
 
 template <class ElemType>
