@@ -10,7 +10,6 @@ import numpy as np
 import pytest
 
 from cntk.io import *
-from cntk.io import _ReaderConfig
 import cntk.io.transforms as xforms
 
 abs_path = os.path.dirname(os.path.abspath(__file__))
@@ -82,6 +81,81 @@ def test_text_format(tmpdir):
     assert features.num_samples < 7
     assert labels.num_samples == 1
 
+def test_sweeps_and_samples_in_minibatch_source_config():
+    config = MinibatchSourceConfig(False)
+
+    assert INFINITELY_REPEAT == config.get_max_samples()
+    assert INFINITELY_REPEAT == config.get_max_sweeps()
+
+    config.set_max_samples(100)
+    assert 100 == config.get_max_samples()
+    assert INFINITELY_REPEAT == config.get_max_sweeps()
+
+    config.set_max_samples(20)
+    assert 20 == config.get_max_samples()
+    assert INFINITELY_REPEAT == config.get_max_sweeps()
+
+    config.set_max_sweeps(3)
+    assert 20 == config.get_max_samples()
+    assert 3 == config.get_max_sweeps()
+
+    dictionary = config.as_dictionary()
+
+    assert 3 == len(dictionary.keys())
+    assert 20 == dictionary['maxSamples']
+    assert 3 == dictionary['maxSweeps']
+    assert False == dictionary['randomize']
+    
+def test_randomization_in_minibatch_source_config():
+    config = MinibatchSourceConfig(True)
+    dictionary = config.as_dictionary()
+
+    assert 3 == len(dictionary.keys())
+    assert False == dictionary['sampleBasedRandomizationWindow']
+    assert DEFAULT_RANDOMIZATION_WINDOW_IN_CHUNKS == dictionary['randomizationWindow']
+    assert True == dictionary['randomize']
+
+    config.set_randomization_window_in_samples(12345)
+    dictionary = config.as_dictionary()
+
+    assert 3 == len(dictionary.keys())
+    assert True == dictionary['sampleBasedRandomizationWindow']
+    assert 12345 == dictionary['randomizationWindow']
+    assert True == dictionary['randomize']
+
+    config.set_randomization_window_in_chunks(321)
+    dictionary = config.as_dictionary()
+
+    assert 3 == len(dictionary.keys())
+    assert False == dictionary['sampleBasedRandomizationWindow']
+    assert 321 == dictionary['randomizationWindow']
+    assert True == dictionary['randomize']
+
+def test_all_other_parameters_minibatch_source_config():
+    config = MinibatchSourceConfig(False) \
+        .set_trace_level(TraceLevel.Warning) \
+        .set_frame_mode(True) \
+        .set_multithreaded(True)
+
+
+    dictionary = config.as_dictionary()
+
+    assert 4 == len(dictionary.keys())
+    assert 1 == dictionary['traceLevel']
+    assert True == dictionary['frameMode']
+    assert True == dictionary['multiThreadedDeserialization']
+    
+    config.set_frame_mode(False).set_multithreaded(False) \
+          .set_trace_level(4) \
+          .set_truncation_length(314)
+
+    assert 6 == len(dictionary.keys())
+    assert 4 == dictionary['traceLevel']
+    assert False == dictionary['frameMode']
+    assert False == dictionary['multiThreadedDeserialization']
+    assert True == dictionary['truncated']
+    assert 314 == dictionary['truncationLength']
+
 def test_image():
     map_file = "input.txt"
     mean_file = "mean.txt"
@@ -100,11 +174,12 @@ def test_image():
         xforms.mean(mean_file)]
     image = ImageDeserializer(map_file, StreamDefs(f = StreamDef(field='image', transforms=transforms), l = StreamDef(field='label', shape=num_classes)))
 
-    rc = _ReaderConfig(image, randomize=False, epoch_size=epoch_size)
+    config = MinibatchSourceConfig(randomize=False).set_max_samples(epoch_size).add_deserializer(image)
+    rc = config.as_dictionary()
 
-    assert rc['epochSize'].value == epoch_size
+    assert rc['maxSamples'] == epoch_size
     assert rc['randomize'] == False
-    assert rc['sampleBasedRandomizationWindow'] == False
+
     assert len(rc['deserializers']) == 1
     d = rc['deserializers'][0]
     assert d['type'] == 'ImageDeserializer'
@@ -130,11 +205,15 @@ def test_image():
     assert t1['interpolations'] == 'linear'
     assert t2['meanFile'] == mean_file
 
-    rc = _ReaderConfig(image, randomize=False, randomization_window = 100,
-        sample_based_randomization_window = True, epoch_size=epoch_size)
+    randomization_window = 100
 
-    assert rc['epochSize'].value == epoch_size
-    assert rc['randomize'] == False
+    config = MinibatchSourceConfig(randomize=False).set_max_samples(epoch_size).add_deserializer(image) \
+                .set_randomization_window_in_samples(randomization_window)
+    rc = config.as_dictionary()
+
+    assert rc['maxSamples'] == epoch_size
+    assert rc['randomize'] == True
+    assert rc['randomizationWindow'] == randomization_window
     assert rc['sampleBasedRandomizationWindow'] == True
     assert len(rc['deserializers']) == 1
     d = rc['deserializers'][0]
@@ -145,12 +224,14 @@ def test_image():
     l = d['input'][label_name]
     assert l['labelDim'] == num_classes
 
-    rc = _ReaderConfig(image, randomize=True, randomization_window = 100,
-        sample_based_randomization_window = True, epoch_size=epoch_size)
+    config = MinibatchSourceConfig().set_max_samples(FULL_DATA_SWEEP).add_deserializer(image) \
+                .set_randomization_window_in_chunks(randomization_window)
+    rc = config.as_dictionary()
 
-    assert rc['epochSize'].value == epoch_size
+    assert rc['maxSamples'] == FULL_DATA_SWEEP
     assert rc['randomize'] == True
-    assert rc['sampleBasedRandomizationWindow'] == True
+    assert rc['randomizationWindow'] == randomization_window
+    assert rc['sampleBasedRandomizationWindow'] == False
     assert len(rc['deserializers']) == 1
     d = rc['deserializers'][0]
     assert d['type'] == 'ImageDeserializer'
@@ -191,6 +272,7 @@ def test_full_sweep_minibatch(tmpdir):
     labels_si = mb_source.stream_info('labels')
 
     mb = mb_source.next_minibatch(1000)
+
     assert mb[features_si].num_sequences == 2
     assert mb[labels_si].num_sequences == 2
 
@@ -224,6 +306,120 @@ def test_full_sweep_minibatch(tmpdir):
     assert np.allclose(labels.mask,
             [[2, 1, 1],
              [2, 1, 0]])
+
+def create_temp_file(tmpdir):
+    tmpfile = str(tmpdir/'mbtest.txt')
+    with open(tmpfile, 'w') as f:
+        f.write("|S0 1\n|S0 2\n|S0 3\n|S0 4")
+    return tmpfile
+
+def create_config(tmpdir):
+    tmpfile = create_temp_file(tmpdir)
+    return MinibatchSourceConfig() \
+        .add_deserializer(
+            CTFDeserializer(tmpfile, 
+                StreamDefs(features  = StreamDef(field='S0', shape=1))))
+
+def test_set_max_samples(tmpdir):
+    mb_source = create_config(tmpdir) \
+        .set_max_samples(1) \
+        .create_minibatch_source()
+
+    input_map = {'features' : mb_source['features']}
+    mb = mb_source.next_minibatch(10, input_map)
+
+    assert 'features' in mb
+    assert mb['features'].num_samples == 1
+    assert not mb['features'].end_of_sweep
+
+    mb = mb_source.next_minibatch(10, input_map)
+
+    assert not mb
+
+def test_set_max_sweeps(tmpdir):
+    # set max sweeps to 3 (12 samples altogether).
+    mb_source = create_config(tmpdir) \
+        .set_max_sweeps(3) \
+        .create_minibatch_source()
+
+    input_map = {'features' : mb_source['features']}
+
+    for i in range(2):
+        mb = mb_source.next_minibatch(5, input_map)
+
+        assert 'features' in mb
+        assert mb['features'].num_samples == 5
+        assert mb['features'].end_of_sweep
+
+    mb = mb_source.next_minibatch(5, input_map)
+
+    assert 'features' in mb
+    assert mb['features'].num_samples == 2
+    assert mb['features'].end_of_sweep
+
+    mb = mb_source.next_minibatch(1, input_map)
+
+    assert not mb
+
+def test_set_max_sweeps_and_max_samples(tmpdir):
+    # set max sweeps to 3 (12 samples altogether).
+    mb_source = create_config(tmpdir) \
+        .set_max_sweeps(3) \
+        .set_max_samples(11) \
+        .create_minibatch_source()
+
+    input_map = {'features' : mb_source['features']}
+
+    for i in range(2):
+        mb = mb_source.next_minibatch(5, input_map)
+
+        assert 'features' in mb
+        assert mb['features'].num_samples == 5
+        assert mb['features'].end_of_sweep
+
+    mb = mb_source.next_minibatch(5, input_map)
+
+    assert 'features' in mb
+    assert mb['features'].num_samples == 1
+    assert not mb['features'].end_of_sweep
+
+    mb = mb_source.next_minibatch(1, input_map)
+
+    assert not mb
+
+def test_one_sweep(tmpdir):
+    sources = []
+    sources.append(create_config(tmpdir) \
+        .set_max_sweeps(1) \
+        .create_minibatch_source())
+
+    sources.append(create_config(tmpdir) \
+        .set_max_sweeps(INFINITELY_REPEAT) \
+        .set_max_samples(FULL_DATA_SWEEP) \
+        .create_minibatch_source())
+
+    sources.append(create_config(tmpdir) \
+        .set_max_sweeps(1) \
+        .set_max_samples(FULL_DATA_SWEEP) \
+        .create_minibatch_source())
+
+    sources.append(create_config(tmpdir) \
+        .set_max_sweeps(1) \
+        .set_max_samples(INFINITELY_REPEAT) \
+        .create_minibatch_source())
+
+    for source in sources:
+        input_map = {'features' : source['features']}
+
+        mb = source.next_minibatch(100, input_map)
+
+        assert 'features' in mb
+        assert mb['features'].num_samples == 4
+        assert mb['features'].end_of_sweep
+
+        mb = source.next_minibatch(100, input_map)
+
+        assert not mb
 
 def test_large_minibatch(tmpdir):
 

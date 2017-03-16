@@ -21,6 +21,9 @@ using namespace Microsoft::MSR::CNTK;
 namespace CNTK
 {
     const size_t MinibatchSource::DefaultRandomizationWindowInChunks = g_4GB / g_32MB;
+    const size_t  MinibatchSource::InfinitelyRepeat = g_infinity;
+    const size_t  MinibatchSource::FullDataSweep = g_dataSweep;
+
 
     const std::unordered_map<StreamInformation, MinibatchData>& MinibatchSource::GetNextMinibatch(size_t minibatchSizeInSamples, const DeviceDescriptor& device /*= DeviceDescriptor::UseDefaultDevice()*/)
     {
@@ -30,6 +33,100 @@ namespace CNTK
     const std::unordered_map<StreamInformation, MinibatchData>& MinibatchSource::GetNextMinibatch(size_t minibatchSizeInSequences, size_t minibatchSizeInSamples, const DeviceDescriptor& device /*= DeviceDescriptor::UseDefaultDevice()*/)
     {
         return GetNextMinibatch(minibatchSizeInSequences, minibatchSizeInSamples, 1, 0, device);
+    }
+
+    MinibatchSourceConfig::MinibatchSourceConfig(bool randomize/* = true*/)
+    {
+        if (randomize)
+            SetRandomizationWindowInChunks(MinibatchSource::DefaultRandomizationWindowInChunks);
+        else 
+            m_dict[L"randomize"] = false;
+    }
+
+
+    MinibatchSourceConfig& MinibatchSourceConfig::SetMaxSamples(size_t value)
+    {
+        m_dict[L"maxSamples"] = value;
+        return *this;
+    }
+
+    size_t MinibatchSourceConfig::GetMaxSamples() const
+    {
+        if (m_dict.Contains(L"maxSamples")) 
+            return m_dict[L"maxSamples"].Value<size_t>();
+
+        return MinibatchSource::InfinitelyRepeat;
+    }
+
+    MinibatchSourceConfig&  MinibatchSourceConfig::SetMaxSweeps(size_t value)
+    {
+        m_dict[L"maxSweeps"] = value;
+        return *this;
+    }
+
+    size_t MinibatchSourceConfig::GetMaxSweeps() const
+    {
+        if (m_dict.Contains(L"maxSweeps"))
+            return m_dict[L"maxSweeps"].Value<size_t>();
+
+        return MinibatchSource::InfinitelyRepeat;
+    }
+
+    MinibatchSourceConfig&  MinibatchSourceConfig::SetRandomizationWindowInSamples(size_t value)
+    {
+        m_dict[L"randomize"] = true;
+        m_dict[L"randomizationWindow"] = value;
+        m_dict[L"sampleBasedRandomizationWindow"] = true;
+        return *this;
+    }
+
+    MinibatchSourceConfig&  MinibatchSourceConfig::SetRandomizationWindowInChunks(size_t value)
+    {
+        m_dict[L"randomize"] = true;
+        m_dict[L"randomizationWindow"] = value;
+        m_dict[L"sampleBasedRandomizationWindow"] = false;
+        return *this;
+    }
+
+    MinibatchSourceConfig& MinibatchSourceConfig::SetTruncationLength(size_t value) 
+    {
+        if (m_dict.Contains(L"frameMode") && m_dict[L"frameMode"].Value<bool>())
+            LogicError("MinibatchSourceConfig: truncation and frame mode are mutually exclusive options.");
+
+        m_dict[L"truncated"] = true;
+        m_dict[L"truncationLength"] = value;
+        return *this;
+    }
+
+    MinibatchSourceConfig&  MinibatchSourceConfig::SetTraceLevel(TraceLevel value)
+    {
+        m_dict[L"traceLevel"] = size_t(value);
+        return *this;
+    }
+
+    CNTK_API MinibatchSourceConfig& MinibatchSourceConfig::SetFrameMode(bool value/* = true*/)
+    {
+        if (m_dict.Contains(L"truncated") && m_dict[L"truncated"].Value<bool>())
+            LogicError("MinibatchSourceConfig: truncation and frame mode are mutually exclusive options.");
+
+        m_dict[L"frameMode"] = value;
+        return *this;
+    }
+
+    CNTK_API MinibatchSourceConfig& MinibatchSourceConfig::SetMultithreaded(bool value/* = true*/)
+    {
+        m_dict[L"multiThreadedDeserialization"] = value;
+        return *this;
+    }
+
+    MinibatchSourceConfig&  MinibatchSourceConfig::AddDeserializer(const Deserializer& deserializer)
+    {
+
+        if (!m_dict.Contains(L"deserializers"))
+            m_dict[L"deserializers"] = std::vector<DictionaryValue>();
+
+        m_dict[L"deserializers"].Value<std::vector<DictionaryValue>>().push_back(deserializer);
+        return *this;
     }
 
     const StreamInformation& MinibatchSource::StreamInfo(const std::wstring& streamName)
@@ -76,13 +173,18 @@ namespace CNTK
         return MinibatchSourcePtr(new CompositeMinibatchSource(configuration));
     }
 
+    MinibatchSourcePtr CreateCompositeMinibatchSource(const MinibatchSourceConfig& configuration)
+    {
+        return MinibatchSourcePtr(new CompositeMinibatchSource(configuration));
+    }
+
     /*static*/ const std::wstring CompositeMinibatchSource::PositionAttributeName = L"minibatchSourcePosition";
 
     CompositeMinibatchSource::CompositeMinibatchSource(const Dictionary& configuration)
         : m_epochEndReached(false),
           m_prevMinibatchSize(0),
           m_maxNumSamplesToRead(MinibatchSource::InfinitelyRepeat),
-          m_randomizedWindow(MinibatchSource::DefaultRandomizationWindow),
+          m_maxNumSweepsToRead(MinibatchSource::InfinitelyRepeat),
           m_truncationLength(0),
           m_numWorkers(1),
           m_workerRank(0),
@@ -143,13 +245,6 @@ namespace CNTK
         if (augmentedConfiguration.Contains(epochSizeConfigurationKey))
             m_maxNumSamplesToRead = augmentedConfiguration[epochSizeConfigurationKey].Value<size_t>();
 
-        const wchar_t* randomizedWindowConfigurationKey = L"randomizationWindow";
-        if (augmentedConfiguration.Contains(randomizedWindowConfigurationKey))
-            m_randomizedWindow = augmentedConfiguration[randomizedWindowConfigurationKey].Value<size_t>();
-
-        if (m_randomizedWindow == MinibatchSource::DefaultRandomizationWindow)
-            m_randomizedWindow = randomizeAuto;
-
         const wchar_t* truncatedConfigurationKey = L"truncated";
         const wchar_t* truncationLengthConfigurationKey = L"truncationLength";
         if (augmentedConfiguration.Contains(truncatedConfigurationKey) &&
@@ -169,19 +264,13 @@ namespace CNTK
 
         m_shim = std::shared_ptr<ReaderShim<float>>(new ReaderShim<float>(compositeDataReader), [](ReaderShim<float>* x) { x->Destroy(); });
         m_shim->Init(config);
+    }
 
-        const wchar_t* numWorkersConfigurationKey = L"numWorkers";
-        if (configuration.Contains(numWorkersConfigurationKey))
-        {
-            m_numWorkers = configuration[numWorkersConfigurationKey].Value<size_t>();
-
-            const wchar_t* workerRankConfigurationKey = L"workerRank";
-            if (configuration.Contains(workerRankConfigurationKey))
-                m_workerRank = configuration[workerRankConfigurationKey].Value<size_t>();
-
-            if (m_workerRank > m_numWorkers - 1)
-                LogicError("CompositeMinibatchSource: Invalid worker rank %lu (numWorkers %lu)", m_workerRank, m_numWorkers);
-        }
+    CompositeMinibatchSource::CompositeMinibatchSource(const MinibatchSourceConfig& configuration)
+        : CompositeMinibatchSource(configuration.AsDictionary())
+    {
+        m_maxNumSamplesToRead = configuration.GetMaxSamples();
+        m_maxNumSweepsToRead = configuration.GetMaxSweeps();
     }
 
     /*virtual*/ const std::unordered_map<StreamInformation, MinibatchData>&
@@ -225,6 +314,8 @@ namespace CNTK
                 {
                     epochConfig.m_totalEpochSizeInSamples = m_maxNumSamplesToRead;
                 }
+
+                epochConfig.m_totalEpochSizeInSweeps = m_maxNumSweepsToRead;
 
                 epochConfig.m_epochIndex = 0;
 
@@ -418,7 +509,10 @@ namespace CNTK
         {
             const auto& key = s.m_streamName;
             Dictionary stream;
-            stream.Add(L"alias", s.m_streamAlias, L"dim", s.m_dim, L"format", s.m_isSparse ? L"sparse" : L"dense");
+            stream[L"dim"] = s.m_dim;
+            stream[L"format"] = s.m_isSparse ? L"sparse" : L"dense";
+            if (!s.m_streamAlias.empty())
+                stream[L"alias"] = s.m_streamAlias;
             input[key] = stream;
         }
         ctf.Add(L"type", L"CNTKTextFormatDeserializer", L"file", fileName, L"input", input);
