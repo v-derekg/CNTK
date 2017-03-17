@@ -259,7 +259,7 @@ namespace CNTK
         CNTK_API static void Reset();
 #ifdef SWIGJAVA
     public:
-        DeviceDescriptor() {DefaultDevice();};
+        DeviceDescriptor() {UseDefaultDevice();};
 #endif
 
     private:
