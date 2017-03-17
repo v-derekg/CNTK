@@ -24,9 +24,10 @@ from cntk.io import MinibatchSource, ImageDeserializer, CTFDeserializer, StreamD
 from cntk.io.transforms import *
 from cntk.learner import momentum_sgd, learning_rate_schedule, momentum_as_time_constant_schedule
 from cntk.ops import input_variable, parameter, cross_entropy_with_softmax, classification_error, times, combine, relu, softmax
-from cntk.ops import roipooling, argmax #, splice
+from cntk.ops import roipooling, argmax, abs, minus, reduce_sum #, splice
 from cntk.ops.functions import CloneMethod
 from cntk.utils import log_number_of_parameters, ProgressPrinter
+from cntk.losses import squared_error
 from cntk import user_function, Axis
 from lib.rpn.cntk_anchor_target_layer import AnchorTargetLayer
 from lib.rpn.cntk_proposal_layer import ProposalLayer
@@ -37,16 +38,13 @@ from lib.rpn.cntk_proposal_target_layer import ProposalTargetLayer
 make_mode = False
 
 # file and stream names
-train_map_filename = 'train.txt'
-test_map_filename = 'test.txt'
-rois_filename_postfix = '.rois.txt'
-roilabels_filename_postfix = '.roilabels.txt'
+map_filename_postfix = '.imgMap.txt'
+rois_filename_postfix = '.GTRois.txt'
 features_stream_name = 'features'
-roi_stream_name = 'rois'
-label_stream_name = 'roiLabels'
+roi_stream_name = 'roiAndLabel'
 
 # from PARAMETERS.py
-base_path = "C:/src/CNTK/Examples/Image/Detection/FastRCNN/proc/Grocery_100/cntkFiles"
+base_path = "C:/src/CNTK/Examples/Image/Detection/FastRCNN/proc/Grocery_100/rois/"
 num_channels = 3
 image_height = 1000
 image_width = 1000
@@ -74,22 +72,17 @@ else:
 
 
 # Instantiates a composite minibatch source for reading images, roi coordinates and roi labels for training Fast R-CNN
-def create_mb_source(img_height, img_width, img_channels, n_classes, n_rois, data_path, data_set):
-    rois_dim = 4 * n_rois
-    label_dim = n_classes * n_rois
+def create_mb_source(img_height, img_width, img_channels, n_rois, data_path, data_set):
+    rois_dim = 5 * n_rois
 
     path = os.path.normpath(os.path.join(abs_path, data_path))
-    if data_set == 'test':
-        map_file = os.path.join(path, test_map_filename)
-    else:
-        map_file = os.path.join(path, train_map_filename)
+    map_file = os.path.join(path, data_set + map_filename_postfix)
     roi_file = os.path.join(path, data_set + rois_filename_postfix)
-    label_file = os.path.join(path, data_set + roilabels_filename_postfix)
 
-    if not os.path.exists(map_file) or not os.path.exists(roi_file) or not os.path.exists(label_file):
-        raise RuntimeError("File '%s', '%s' or '%s' does not exist. "
+    if not os.path.exists(map_file) or not os.path.exists(roi_file):
+        raise RuntimeError("File '%s' or '%s' does not exist. "
                            "Please run install_fastrcnn.py from Examples/Image/Detection/FastRCNN to fetch them" %
-                           (map_file, roi_file, label_file))
+                           (map_file, roi_file))
 
     # read images
     transforms = [scale(width=img_width, height=img_height, channels=img_channels,
@@ -101,18 +94,16 @@ def create_mb_source(img_height, img_width, img_channels, n_classes, n_rois, dat
     # read rois and labels
     roi_source = CTFDeserializer(roi_file, StreamDefs(
         rois = StreamDef(field=roi_stream_name, shape=rois_dim, is_sparse=False)))
-    label_source = CTFDeserializer(label_file, StreamDefs(
-        roiLabels = StreamDef(field=label_stream_name, shape=label_dim, is_sparse=False)))
 
     # define a composite reader
-    return MinibatchSource([image_source, roi_source, label_source], epoch_size=sys.maxsize, randomize=data_set == "train")
+    return MinibatchSource([image_source, roi_source], epoch_size=sys.maxsize, randomize=data_set == "train")
 
 
 # Defines the Faster R-CNN network model for detecting objects in images
-def faster_rcnn_predictor(features, cntk_gt_boxes, gt_labels, n_classes):
+def faster_rcnn_predictor(features, gt_boxes, n_classes):
     im_info = [image_width, image_height, 1]
-    argmax_labels = argmax(gt_labels, axis=1)
-    gt_boxes = cntk.ops.splice(cntk_gt_boxes, argmax_labels, axis=1)
+    #argmax_labels = argmax(gt_labels, axis=1)
+    #gt_boxes = cntk.ops.splice(cntk_gt_boxes, argmax_labels, axis=1)
 
     # Load the pretrained classification net and find nodes
     loaded_model = load_model(base_model_file)
@@ -139,8 +130,19 @@ def faster_rcnn_predictor(features, cntk_gt_boxes, gt_labels, n_classes):
     atl = user_function(AnchorTargetLayer(rpn_cls_score, gt_boxes, im_info=im_info))
     rpn_labels = atl.outputs[0]
     rpn_bbox_targets = atl.outputs[1]
+
     #rpn_loss_cls = user_function(SoftmaxWithLoss(rpn_cls_score, rpn_labels, ignore_label=-1))
+    # rpn_loss_cls = cross_entropy_with_softmax(rpn_cls_score, rpn_labels, axis=1) # !!! TODO: use ignore_label = -1
+    # ==> Left operand 'Placeholder('Placeholder542', [#], [1 x 1 x 549 x 61])' shape '[1 x 1 x 549 x 61]'
+    #     is not compatible with right operand 'Placeholder('Placeholder541', [#], [18 x 61 x 61])' shape '[18 x 61 x 61]'.
+    # ==> labels are not one-hot, but indices. cls_scores are one value per class (bg, fg)
+
     #rpn_loss_bbox = user_function(SmoothL1Loss(rpn_bbox_pred, rpn_bbox_targets))
+    rpn_loss_bbox = reduce_sum(abs(minus(rpn_bbox_pred, rpn_bbox_targets)), axis=1) # !!! TODO: use SmoothL1
+    # ==> Left operand 'Output('Plus660_Output_0', [#], [100 x 1])' shape '[100 x 1]'
+    #     is not compatible with right operand 'Output('ReduceElements531_Output_0', [#], [1 x 1 x 61 x 61])' shape '[1 x 1 x 61 x 61]'.
+    # ==> TODO: reshape to take SmoothL1 per 4-tuple
+    # ==> TODO: find a way to combine loss functions of shapes (100, 1) and (33489,1) (output rois vs anchors per conv-map position)
 
     # ROI proposal
     # - ProposalLayer:
@@ -149,6 +151,7 @@ def faster_rcnn_predictor(features, cntk_gt_boxes, gt_labels, n_classes):
     # - ProposalTargetLayer:
     #    Assign object detection proposals to ground-truth targets. Produces proposal
     #    classification labels and bounding-box regression targets.
+    #  + adds gt_boxes to candidates and samples fg and bg rois for training
     rpn_cls_prob = softmax(rpn_cls_score)
     rpn_rois = user_function(ProposalLayer(rpn_cls_prob, rpn_bbox_pred, im_info=im_info))
     #rois, labels, bbox_targets = user_function(ProposalTargetLayer(rpn_rois, rpn_scores))
@@ -158,7 +161,7 @@ def faster_rcnn_predictor(features, cntk_gt_boxes, gt_labels, n_classes):
     bbox_targets = ptl.outputs[2]
 
     # RCNN
-    # ??? rois OR rpn_rois ??? --> caffe script uses rois
+    # Comment: training uses 'rois' from ptl (sampled), eval uses 'rpn_rois' from proposal_layer
     roi_out = roipooling(conv_out, rois, (roi_dim, roi_dim))
     fc_out  = fc_layers(roi_out)
 
@@ -175,10 +178,13 @@ def faster_rcnn_predictor(features, cntk_gt_boxes, gt_labels, n_classes):
     # loss function
     loss_cls = cross_entropy_with_softmax(cls_score, labels, axis=1)
     #loss_box = user_function(SmoothL1Loss(bbox_pred, bbox_targets))
+    loss_box = reduce_sum(abs(minus(bbox_pred, bbox_targets)), axis=1) # !!! TODO: use SmoothL1
     #loss = rpn_loss_cls + rpn_loss_bbox + loss_cls + loss_box
-    loss = loss_cls
+    loss = loss_cls + loss_box
 
-    return cls_score, loss
+    pred_error = classification_error(cls_score, labels, axis=1)
+
+    return cls_score, loss, pred_error
 
 
 # Trains a Faster R-CNN model
@@ -187,30 +193,28 @@ def train_faster_rcnn(debug_output=False):
         print("Storing graphs and intermediate models to %s." % os.path.join(abs_path))
 
     # Create the minibatch source
-    minibatch_source = create_mb_source(image_height, image_width, num_channels,
-                                        num_classes, num_rois, base_path, "train")
+    minibatch_source = create_mb_source(image_height, image_width, num_channels, num_rois, base_path, "train")
 
-    # Input variables denoting features, rois and label data
+    # Input variables denoting features and labeled ground truth rois (as 5-tuples per roi)
     image_input = input_variable((num_channels, image_height, image_width), dynamic_axes=[Axis.default_batch_axis()])
-    roi_input   = input_variable((num_rois, 4), dynamic_axes=[Axis.default_batch_axis()])
-    label_input = input_variable((num_rois, num_classes), dynamic_axes=[Axis.default_batch_axis()])
+    roi_input   = input_variable((num_rois, 5), dynamic_axes=[Axis.default_batch_axis()])
+    #label_input = input_variable((num_rois, num_classes), dynamic_axes=[Axis.default_batch_axis()])
 
     # define mapping from reader streams to network inputs
     input_map = {
         image_input: minibatch_source.streams.features,
         roi_input: minibatch_source.streams.rois,
-        label_input: minibatch_source.streams.roiLabels
+        #label_input: minibatch_source.streams.roiLabels
     }
 
     # Instantiate the Faster R-CNN prediction model and loss function
-    # cls_score, loss = faster_rcnn_predictor(features, gt_boxes, n_classes)
-    cls_score, loss = faster_rcnn_predictor(image_input, roi_input, label_input, num_classes)
+    cls_score, loss, pred_error = faster_rcnn_predictor(image_input, roi_input, num_classes)
 
     #frcn_output = frcn_predictor(image_input, roi_input, num_classes)
     #ce = cross_entropy_with_softmax(frcn_output, label_input, axis=1)
     #pe = classification_error(frcn_output, label_input, axis=1)
-    #if debug_output:
-    #    plot(cls_score, os.path.join(abs_path, "graph_frcn.png"))
+    if debug_output:
+        plot(loss, os.path.join(abs_path, "graph_frcn.png"))
 
     # Set learning parameters
     l2_reg_weight = 0.0005
@@ -221,7 +225,7 @@ def train_faster_rcnn(debug_output=False):
     # Instantiate the trainer object
     learner = momentum_sgd(cls_score.parameters, lr_schedule, mm_schedule, l2_regularization_weight=l2_reg_weight)
     ##trainer = Trainer(frcn_output, (ce, pe), learner)
-    trainer = Trainer(cls_score, loss, learner)
+    trainer = Trainer(cls_score, (loss, pred_error), learner)
 
     # Get minibatches of images and perform model training
     print("Training Fast R-CNN model for %s epochs." % max_epochs)
@@ -244,8 +248,8 @@ def train_faster_rcnn(debug_output=False):
 
 # Tests a Faster R-CNN model
 def eval_faster_rcnn(model):
-    test_minibatch_source = create_mb_source(image_height, image_width, num_channels,
-                                             num_classes, num_rois, base_path, "test")
+    test_minibatch_source = create_mb_source(image_height, image_width, num_channels, num_rois, base_path, "test")
+    # !!! TODO: modify Faster RCNN model by excluding target layers and losses
     input_map = {
         model.arguments[0]: test_minibatch_source[features_stream_name],
         model.arguments[1]: test_minibatch_source[roi_stream_name],
@@ -272,7 +276,7 @@ if __name__ == '__main__':
     os.chdir(base_path)
     model_path = os.path.join(abs_path, "frcn_py.model")
 
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
 
     # Train only if no model exists yet
     if os.path.exists(model_path) and make_mode:

@@ -17,7 +17,7 @@ from fast_rcnn.config import cfg
 from fast_rcnn.bbox_transform import bbox_transform
 from utils.cython_bbox import bbox_overlaps
 
-DEBUG = False
+DEBUG = True
 
 class AnchorTargetLayer(UserFunction):
     """
@@ -62,6 +62,8 @@ class AnchorTargetLayer(UserFunction):
         # labels
         ##top[0].reshape(1, 1, A * height, width)
         labelShape = (1, 1, A * height, width)
+        # Comment: this layer uses encoded labels, while in CNTK we mostly use one hot labels
+        # --- labelShape = (1, A * 2, height, width)
         # bbox_targets
         ##top[1].reshape(1, A * 4, height, width)
         bbox_target_shape = (1, A * 4, height, width)
@@ -243,8 +245,7 @@ class AnchorTargetLayer(UserFunction):
         outputs[self.outputs[0]] = labels
 
         # bbox_targets
-        bbox_targets = bbox_targets \
-            .reshape((1, height, width, A * 4)).transpose(0, 3, 1, 2)
+        bbox_targets = bbox_targets.reshape((1, height, width, A * 4)).transpose(0, 3, 1, 2)
         # top[1].reshape(*bbox_targets.shape)
         # top[1].data[...] = bbox_targets
         outputs[self.outputs[1]] = bbox_targets
