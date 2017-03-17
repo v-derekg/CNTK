@@ -71,8 +71,7 @@ class ProposalLayer(UserFunction):
         # take after_nms_topN proposals after NMS
         # return the top proposals (-> RoIs top, scores top)
 
-        bottom_0 = bottom[0][0,:] # ??? TODO: remove [0,:] hack once sequence axis is off
-        assert bottom_0.data.shape[0] == 1, \
+        assert bottom[0].data.shape[0] == 1, \
             'Only single item batches are supported'
 
         cfg_key = 'TRAIN' # str(self.phase) # either 'TRAIN' or 'TEST'
@@ -83,9 +82,8 @@ class ProposalLayer(UserFunction):
 
         # the first set of _num_anchors channels are bg probs
         # the second set are the fg probs, which we want
-        ##scores = bottom[0].data[:, self._num_anchors:, :, :]
-        scores = bottom_0[:, self._num_anchors:, :, :]
-        bbox_deltas = bottom[1][0,:] # ??? TODO: remove [0,:] hack once sequence axis is off
+        scores = bottom[0][:, self._num_anchors:, :, :]
+        bbox_deltas = bottom[1]
         im_info = self._im_info
 
         if DEBUG:

@@ -272,6 +272,8 @@ if __name__ == '__main__':
     os.chdir(base_path)
     model_path = os.path.join(abs_path, "frcn_py.model")
 
+    import pdb; pdb.set_trace()
+
     # Train only if no model exists yet
     if os.path.exists(model_path) and make_mode:
         print("Loading existing model from %s" % model_path)

@@ -67,16 +67,14 @@ class ProposalTargetLayer(UserFunction):
 
         # Proposal ROIs (0, x1, y1, x2, y2) coming from RPN
         # (i.e., rpn.proposal_layer.ProposalLayer), or any other source
-        all_rois = bottom[0][0,0,:] #.data
+        all_rois = bottom[0][0,:] #.data
         # GT boxes (x1, y1, x2, y2, label)
         # TODO(rbg): it's annoying that sometimes I have extra info before
         # and other times after box coordinates -- normalize to one format
-        gt_boxes = bottom[1][0,0,:] #.data
+        gt_boxes = bottom[1][0,:] #.data
 
         # For CNTK: convert and scale gt_box coords from x, y, w, h relative to x1, y1, x2, y2 absolute
         whwh = (1000, 1000, 1000, 1000) # TODO: get image width and height OR better scale beforehand
-        #gtb = gt_boxes[:,-1]
-        #ngtb = np.vstack((gtb[:, 0], gtb[:, 1], gtb[:, 0] + gtb[:, 2], gtb[:, 1] + gtb[:, 3]))
         ngtb = np.vstack((gt_boxes[:, 0], gt_boxes[:, 1], gt_boxes[:, 0] + gt_boxes[:, 2], gt_boxes[:, 1] + gt_boxes[:, 3]))
         gt_boxes[:, :-1] = ngtb.transpose() * whwh
 
