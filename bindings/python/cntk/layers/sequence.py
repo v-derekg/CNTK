@@ -14,6 +14,8 @@ from .blocks import _get_initial_state_or_default, _inject_name
 
 def Delay(T=1, initial_state=default_override_or(0), name=''):
     '''
+    Delay(T=1, initial_state=default_override_or(0), name='')
+
     Layer factory function to create a layer that delays input the input by a given number of time steps. Negative means future.
     This is provided as a layer instead of a function so that it can easily be used in a Sequential() expression.
     '''
@@ -39,6 +41,8 @@ def Delay(T=1, initial_state=default_override_or(0), name=''):
 # TODO: reconsider the name. Windowed()?
 def PastValueWindow(window_size, axis, go_backwards=default_override_or(False), name=''):
     '''
+    PastValueWindow(window_size, axis, go_backwards=default_override_or(False), name='')
+
     Layer factory function to create a function that returns a static, maskable view for N past steps over a sequence along the given 'axis'.
     It returns two matrices: a value matrix, shape=(N,dim), and a valid window, shape=(1,dim)
     '''
@@ -85,6 +89,8 @@ def _sanitize_function(f):
 # TODO: allow to say sequential=False, axis=2, length=100, ... something like this
 def RecurrenceFrom(step_function, go_backwards=default_override_or(False), return_full_state=False, name=''):
     '''
+    RecurrenceFrom(step_function, go_backwards=default_override_or(False), return_full_state=False, name='')
+
     Layer factory function to create a function that runs a cell function recurrently over a time sequence, with initial state.
     This form is meant for use in sequence-to-sequence scenarios.
     The difference to Recurrence() is that this returns a function that accepts the initial state as data argument(s).
@@ -150,6 +156,8 @@ def RecurrenceFrom(step_function, go_backwards=default_override_or(False), retur
 
 def Recurrence(step_function, go_backwards=default_override_or(False), initial_state=default_override_or(0), return_full_state=False, name=''):
     '''
+    Recurrence(step_function, go_backwards=default_override_or(False), initial_state=default_override_or(0), return_full_state=False, name='')
+
     Layer factory function to create a function that runs a cell function recurrently over a time sequence.
     This form is meant for use in regular recurrent-model scenarios.
     ``initial_state`` must be a constant (or at least have known shape). To pass initial_state as a data input, use RecurrenceFrom() instead.
@@ -188,6 +196,8 @@ def Recurrence(step_function, go_backwards=default_override_or(False), initial_s
 
 def Fold(folder_function, go_backwards=default_override_or(False), initial_state=default_override_or(0), return_full_state=False, name=''):
     '''
+    Fold(folder_function, go_backwards=default_override_or(False), initial_state=default_override_or(0), return_full_state=False, name='')
+
     Layer factory function to create a function that implements the fold() catamorphism.
     It is like ``Recurrence()`` except that it returns only the final state.
     This is often used for embeddings of sequences, e.g. in a sequence-to-sequence model.
