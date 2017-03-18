@@ -2844,7 +2844,7 @@ GPUSparseMatrix<ElemType>& GPUSparseMatrix<ElemType>::InplaceTruncateTop(const E
 }
 
 template <class ElemType>
-GPUSparseMatrix<ElemType>& GPUSparseMatrix<ElemType>::AssignOneHot(const GPUMatrix<ElemType>& a, size_t num_class)
+GPUSparseMatrix<ElemType>& GPUSparseMatrix<ElemType>::AssignOneHot(const GPUMatrix<ElemType>& a, vector<size_t>& shape, size_t axis)
 {
     if (a.IsEmpty())
         LogicError("AssignOneHot: Matrix a is empty.");
@@ -2853,6 +2853,15 @@ GPUSparseMatrix<ElemType>& GPUSparseMatrix<ElemType>::AssignOneHot(const GPUMatr
     {
         LogicError("AssignOneHot: Matrix format is not supported.");
     }
+
+    if (axis >= shape.size())
+        LogicError("AssignOneHot: axis is not correct");
+
+    int item_size = 1;
+    for (size_t i = 0; i < shape.size() && i < axis; i++)
+        item_size *= (int)shape[i];
+
+    int num_class = (int)shape[axis];
 
     auto nCols = a.GetNumCols();
     auto nRows = num_class * a.GetNumRows();
@@ -2871,6 +2880,7 @@ GPUSparseMatrix<ElemType>& GPUSparseMatrix<ElemType>::AssignOneHot(const GPUMatr
                                                                                       majorIndices,
                                                                                       targetData,
                                                                                       num_class,
+                                                                                      item_size,
                                                                                       a.GetNumRows(),
                                                                                       a.GetNumCols(),
                                                                                       N);
