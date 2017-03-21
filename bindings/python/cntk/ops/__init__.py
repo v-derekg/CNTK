@@ -1965,6 +1965,10 @@ def slice(x, axis, begin_index, end_index, name=''):
         ...                                              [4, 5, 6]]]],dtype=np.float32)})
         array([[[[ 1.],
                  [ 4.]]]], dtype=float32)
+        >>> # slice along multiple axes
+        >>> C.slice(x1, [0,1], [1,0], [2,1]).eval({x1: np.asarray([[[[1, 2, -3],
+        ...                                                          [4, 5, 6]]]],dtype=np.float32)})
+        array([[[[ 4.]]]], dtype=float32)
         <BLANKLINE>
         >>> # slice using constant
         >>> data = np.asarray([[1, 2, -3],
@@ -1975,6 +1979,8 @@ def slice(x, axis, begin_index, end_index, name=''):
         >>> C.slice(x, 1, 0, 1).eval()
         array([[ 1.],
                [ 4.]], dtype=float32)
+        >>> C.slice(x, [0,1], [1,0], [2,1]).eval()
+        array([[ 4.]], dtype=float32)
         <BLANKLINE>
         >>> # slice using the index overload
         >>> data = np.asarray([[1, 2, -3],
@@ -1984,14 +1990,12 @@ def slice(x, axis, begin_index, end_index, name=''):
         array([[ 1.,  2.,  -3.]], dtype=float32)
         >>> x[0, [1,2]].eval()
         array([[ 2.,  -3.]], dtype=float32)
-
-    Example:
-        #TODO: Make following lines work. Uncomment when done
-        #>>> x1[1].eval()
-        #array([[ 4.,  5.,  6.]], dtype=float32)
-        #>>> x1[:,:2,:].eval()
-        #array([[ 1.,  2.],
-        #         [ 4.,  5.]], dtype=float32)
+        <BLANKLINE>
+        >>> x[1].eval()
+        array([[ 4.,  5.,  6.]], dtype=float32)
+        >>> x[:,:2,:].eval()
+        array([[ 1.,  2.],
+               [ 4.,  5.]], dtype=float32)
 
     Args:
         x: input tensor

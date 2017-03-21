@@ -366,14 +366,18 @@ namespace CNTK
                         {
                             assert(m_inputs.size() == 1);
 
-                            auto axis = AsVector<Axis>(m_attributes[PrimitiveFunction::AttributeNameAxis].Value<std::vector<DictionaryValue>>());
+                            std::vector<Axis> axis; 
+                            auto &axisDictionary = m_attributes[PrimitiveFunction::AttributeNameAxis].Value<std::vector<DictionaryValue>>(); 
+                            for (auto& value : axisDictionary)
+                                axis.push_back(NormalizeStaticAxis(value.Value<Axis>(), m_inputs[0].Shape())); 
+
                             auto beginIndex = AsVector<int>(m_attributes[PrimitiveFunction::AttributeNameBeginIndex].Value<std::vector<DictionaryValue>>());
                             auto endIndex = AsVector<int>(m_attributes[PrimitiveFunction::AttributeNameEndIndex].Value<std::vector<DictionaryValue>>());
 
                             auto outputTensorShape = AsTensorShape(m_inputs[0].Shape());
                             for (auto i = 0; i < axis.size(); i++)
                             {
-                                auto ax = NormalizeStaticAxis(axis[i], m_inputs[0].Shape());
+                                auto& ax = axis[i];
                                 if (!ax.IsStaticAxis()) 
                                     LogicError("Function '%S': Built-in Slice operation currently does not support slicing along dynamic axis.", AsString().c_str());
                                 VerifyStaticAxis(ax, m_inputs[0].Shape());
