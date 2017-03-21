@@ -333,7 +333,7 @@ function find_jdk ()
 
 function default_use_java ()
 {
-        echo no
+        echo yes
 }
 enable_java=$(default_use_java)
 
