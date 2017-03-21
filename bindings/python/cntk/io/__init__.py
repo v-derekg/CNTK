@@ -8,6 +8,7 @@ from .. import cntk_py
 from ..tensor import ArrayMixin
 from ..utils import typemap, value_to_seq
 from cntk.device import use_default_device
+from cntk.utils import Record
 
 import numpy as np
 import uuid
@@ -18,7 +19,9 @@ INFINITE_SAMPLES = cntk_py.MinibatchSource.infinite_samples
 DEFAULT_RANDOMIZATION_WINDOW = cntk_py.MinibatchSource.default_randomization_window
 DEFAULT_RANDOMIZATION_WINDOW_IN_CHUNKS = cntk_py.MinibatchSource.default_randomization_window_in_chunks
 
+
 class MinibatchData(cntk_py.MinibatchData, ArrayMixin):
+
     '''
     Holds a minibatch of input data. This is never directly created, but
     only returned by :class:`MinibatchSource` instances.
@@ -80,50 +83,63 @@ class MinibatchData(cntk_py.MinibatchData, ArrayMixin):
     def __len__(self):
         return self.num_sequences
 
+
 class MinibatchSource(cntk_py.MinibatchSource):
+
     '''MinibatchSource(deserializers=None, randomize=True, randomization_window=cntk.io.DEFAULT_RANDOMIZATION_WINDOW, epoch_size=cntk.io.INFINITELY_REPEAT, distributed_after=cntk.io.INFINITE_SAMPLES, multithreaded_deserializer=None)
     A `MinibatchSource` can be indexed by the stream name, which will return a
-    Parent class of all minibatch sources.  A `MinibatchSource` can be indexed by the stream name, which will return a
-    :class:`MinibatchData` object that can be passed e.g. to the
+    parent class of all minibatch sources.  A `MinibatchSource` can be indexed
+    by the stream name, which will return a :class:`MinibatchData` object that
+    can be passed e.g. to the
     :func:`~cntk.train.trainer.Trainer.train_minibatch` function.
 
     Args:
         deserializers (`list`, defaults to empty): list of deserializers
         randomize (`bool`, defaults to `True`): randomize before every epoch
-        randomization_window (int): size of window that reader will shuffle, ignored if `randomize`
-          is `False`
-        sample_based_randomization_window (`bool`, defaults to `False`): specifies how to interpret
-          `randomization_window`. If `True`, the size of the randomization window is interpreted as a certain
-          number of samples, otherwise -- as a number of chunks. Similarly to `randomization_window`,
-          this parameter is ignored, when `randomize` is `False`
-        epoch_size (`int`, defaults to :const:`~cntk.io.INFINITELY_REPEAT`): number of samples as a scheduling unit.
-          Parameters in the schedule change their values every `epoch_size`
-          samples. If no `epoch_size` is provided, this parameter is substituted
-          by the size of the full data sweep with infinte repeat, in which case the scheduling unit is
-          the entire data sweep (as indicated by the MinibatchSource) and parameters
-          change their values on the sweep-by-sweep basis specified by the schedule.
+        randomization_window (int): size of window that reader will shuffle,
+          ignored if `randomize` is `False`
+        sample_based_randomization_window (`bool`, defaults to `False`):
+          specifies how to interpret `randomization_window`. If `True`, the
+          size of the randomization window is interpreted as a certain number
+          of samples, otherwise -- as a number of chunks. Similarly to
+          `randomization_window`, this parameter is ignored, when `randomize`
+          is `False`.
+        epoch_size (`int`, defaults to :const:`~cntk.io.INFINITELY_REPEAT`):
+          number of samples as a scheduling unit.A Parameters in the schedule
+          change their values every `epoch_size` samples. If no `epoch_size` is
+          provided, this parameter is substituted by the size of the full data
+          sweep with infinte repeat, in which case the scheduling unit is the
+          entire data sweep (as indicated by the MinibatchSource) and
+          parameters change their values on the sweep-by-sweep basis specified
+          by the schedule.
           **Important:**
           Click `here <https://github.com/Microsoft/CNTK/wiki/BrainScript-epochSize-and-Python-epoch_size-in-CNTK>`_ for a full description of this parameter. 
-        distributed_after (int, defaults to cntk.io.INFINITE_SAMPLES): sample count after which minibatch source becomes distributed
-        multithreaded_deserializer (`bool`, defaults to `None`): using multi threaded deserializer
-        frame_mode (`bool`, defaults to `False`): Specifies if data should be randomized and returned at the frame
+        distributed_after (int, defaults to cntk.io.INFINITE_SAMPLES): sample
+          count after which minibatch source becomes distributed
+        multithreaded_deserializer (`bool`, defaults to `None`): using multi
+          threaded deserializer
+        frame_mode (`bool`, defaults to `False`): Specifies if data should be
+          randomized and returned at the frame
          or sequence level. When  true , input sequence are split into frames.
-        truncation_length (`int`): Specifies the truncation length in samples for BPTT (positive integer). If greater than zero
-         `frame_mode` cannot be used at the same time.
+        truncation_length (`int`): Specifies the truncation length in samples
+          for BPTT (positive integer). If greater than zero `frame_mode` cannot
+          be used at the same time.
     '''
-    def __init__(self,
-        deserializers=None,
-        randomize=True,
-        randomization_window=DEFAULT_RANDOMIZATION_WINDOW_IN_CHUNKS,
-        sample_based_randomization_window=False,
-        epoch_size=INFINITELY_REPEAT,
-        distributed_after=INFINITE_SAMPLES,
-        multithreaded_deserializer=None,
-        frame_mode=False,
-        truncation_length=0):
 
-        if not isinstance(deserializers, (list,tuple)):
-            deserializers = [deserializers] # allow passing a single item or a list
+    def __init__(self,
+                 deserializers=None,
+                 randomize=True,
+                 randomization_window=DEFAULT_RANDOMIZATION_WINDOW_IN_CHUNKS,
+                 sample_based_randomization_window=False,
+                 epoch_size=INFINITELY_REPEAT,
+                 distributed_after=INFINITE_SAMPLES,
+                 multithreaded_deserializer=None,
+                 frame_mode=False,
+                 truncation_length=0):
+
+        if not isinstance(deserializers, (list, tuple)):
+            # allow passing a single item or a list
+            deserializers = [deserializers]
         reader_config = _ReaderConfig(
             deserializers=deserializers,
             randomize=randomize,
@@ -138,9 +154,7 @@ class MinibatchSource(cntk_py.MinibatchSource):
         # transplant into this class instance
         self.__dict__ = source.__dict__
         # transplant all members of deserializers into a record called streams
-        streams = {}
-        for si in self.stream_infos():
-            streams[si.m_name] = si
+        streams = {si.m_name: si for si in self.stream_infos()}
         from ..utils import Record
         self.streams = Record(**streams)
 
@@ -164,20 +178,23 @@ class MinibatchSource(cntk_py.MinibatchSource):
 
     def __getitem__(self, name):
         '''
-        Return the :class:`~cntk.cntk_py.StreamInformation` for the given stream name
+        Return the :class:`~cntk.cntk_py.StreamInformation` for the given
+        stream name.
 
         Args:
-            name (str): stream name to fetch :class:`~cntk.cntk_py.StreamInformation` for
+            name (str): stream name to fetch
+              :class:`~cntk.cntk_py.StreamInformation` for
         '''
         return self.stream_info(name)
 
     @typemap
     def next_minibatch(self, minibatch_size_in_samples,
-            input_map=None, device=None, num_data_partitions=None, partition_index=None):
+                       input_map=None, device=None, num_data_partitions=None,
+                       partition_index=None):
         '''
         Reads a minibatch that contains data for all input streams.  The
-        minibatch size is specified in terms of #samples and/or #sequences for the
-        primary input stream; value of 0 for #samples/#sequences means
+        minibatch size is specified in terms of #samples and/or #sequences for
+        the primary input stream; value of 0 for #samples/#sequences means
         unspecified.  In case the size is specified in terms of both #sequences
         and #samples, the smaller of the 2 is taken.  An empty map is returned
         when the MinibatchSource has no more data to return.
@@ -186,20 +203,23 @@ class MinibatchSource(cntk_py.MinibatchSource):
             minibatch_size_in_samples (int): number of samples to retrieve for
               the next minibatch. Must be > 0.
               **Important:**
-              Click `here <https://github.com/Microsoft/CNTK/wiki/BrainScript-epochSize-and-Python-epoch_size-in-CNTK>`_ for a full description of this parameter. 
+              Click `here <https://github.com/Microsoft/CNTK/wiki/BrainScript-epochSize-and-Python-epoch_size-in-CNTK>`_ for a full description of this parameter.
             input_map (dict): mapping of :class:`~cntk.ops.variables.Variable`
-              to :class:`~cntk.cntk_py.StreamInformation` which will be used to convert the
-              returned data.
-            device (`DeviceDescriptor`, defaults to `None`): CNTK DeviceDescriptor
-            num_data_partitions: Used for distributed training, indicates into how many partitions
-              the source should split the data.
-            partition_index (`int`, defaults to `None`): Used for distributed training, indicates data from which partition to take.
+              to :class:`~cntk.cntk_py.StreamInformation` which will be used to
+              convert the returned data.
+            device (`DeviceDescriptor`, defaults to `None`): CNTK
+              DeviceDescriptor
+            num_data_partitions: Used for distributed training, indicates into
+              how many partitions the source should split the data.
+            partition_index (`int`, defaults to `None`): Used for distributed
+              training, indicates data from which partition to take.
 
         Returns:
             cntk.io.MinibatchData:
-            A mapping of :class:`~cntk.cntk_py.StreamInformation` to :class:`MinibatchData` if
-            `input_map` was not specified. Otherwise, the returned value will
-            be a mapping of :class:`~cntk.ops.variables.Variable` to class:`MinibatchData`.
+            A mapping of :class:`~cntk.cntk_py.StreamInformation` to
+            :class:`MinibatchData` if `input_map` was not specified. Otherwise,
+            the returned value will be a mapping of
+            :class:`~cntk.ops.variables.Variable` to class:`MinibatchData`.
         '''
         if device is None:
             device = use_default_device()
@@ -210,14 +230,17 @@ class MinibatchSource(cntk_py.MinibatchSource):
         if partition_index is None:
             partition_index = 0
 
-        mb = super(MinibatchSource, self).get_next_minibatch(0,
-                minibatch_size_in_samples, num_data_partitions, partition_index, device)
+        parent_inst = super(MinibatchSource, self)
+        mb = parent_inst.get_next_minibatch(0,
+                                            minibatch_size_in_samples,
+                                            num_data_partitions,
+                                            partition_index, device)
 
         if input_map:
             if not mb:
                 return {}
             else:
-                return { key : mb[value] for (key, value) in input_map.items() }
+                return {key: mb[value] for (key, value) in input_map.items()}
         else:
             return mb
 
@@ -227,7 +250,8 @@ class MinibatchSource(cntk_py.MinibatchSource):
 
         Returns:
             cntk.cntk_py.Dictionary:
-            A :class:`~cntk.cntk_py.Dictionary` that has the checkpoint state of the MinibatchSource
+            A :class:`~cntk.cntk_py.Dictionary` that has the checkpoint state
+            of the MinibatchSource
         '''
         return super(MinibatchSource, self).get_checkpoint_state()
 
@@ -236,7 +260,8 @@ class MinibatchSource(cntk_py.MinibatchSource):
         Restores the MinibatchSource state from the specified checkpoint.
 
         Args:
-            checkpoint (:class:`~cntk_py.Dictionary`): checkpoint to restore from
+            checkpoint (:class:`~cntk_py.Dictionary`): checkpoint to restore
+              from
         '''
         super(MinibatchSource, self).restore_from_checkpoint(checkpoint)
 
@@ -253,7 +278,8 @@ class MinibatchSource(cntk_py.MinibatchSource):
         Gets current position in the minibatch source.
 
         Returns:
-            Minibatch position :class:`~cntk.cntk_py.Dictionary` on the global timeline.
+            Minibatch position :class:`~cntk.cntk_py.Dictionary` on the global
+            timeline.
         '''
         return self.get_checkpoint_state()
 
@@ -263,20 +289,24 @@ class MinibatchSource(cntk_py.MinibatchSource):
         Sets current position in the minibatch source.
 
         Args:
-            position (:class:`~cntk.cntk_py.Dictionary`): position returned from :func:`~get_current_position`.
+            position (:class:`~cntk.cntk_py.Dictionary`): position returned
+            from :func:`~get_current_position`.
         '''
         self.restore_from_checkpoint(position)
 
+
 def _py_dict_to_cntk_dict(py_dict):
     '''
-    Converts a Python dictionary into a CNTK Dictionary whose values are CNTK DictionaryValue instances.
+    Converts a Python dictionary into a CNTK Dictionary whose values are CNTK
+    DictionaryValue instances.
 
     Args:
         py_dict (dict): a dictionary to be converted.
 
     Returns:
         cntk_py.Dictionary:
-        A :class:`~cntk_py.Dictionary` that has been converted from the input `dict`
+        A :class:`~cntk_py.Dictionary` that has been converted from the input
+        `dict`
     '''
     res = cntk_py.Dictionary()
     for k, v in py_dict.items():
@@ -284,20 +314,25 @@ def _py_dict_to_cntk_dict(py_dict):
             res[k] = cntk_py.DictionaryValueFromDict(_py_dict_to_cntk_dict(v))
         # TODO: add support to list of lists ?
         elif isinstance(v, list):
-            res[k] = cntk_py.DictionaryValue([cntk_py.DictionaryValueFromDict(_py_dict_to_cntk_dict(e) if isinstance(e, dict) else e) for e in v])
+            dval = [cntk_py.DictionaryValueFromDict(_py_dict_to_cntk_dict(e)
+                    if isinstance(e, dict) else e) for e in v]
+            res[k] = cntk_py.DictionaryValue(dval)
         else:
             res[k] = cntk_py.DictionaryValue(v)
     return res
 
 
-# TODO: This should be a private function; use MinibatchSource(deserializer, ...).
+# TODO: This should be a private function; use
+# MinibatchSource(deserializer, ...).
 @typemap
 def _minibatch_source(config):
     '''
-    Instantiate the CNTK built-in composite minibatch source which is used to stream data into the network.
+    Instantiate the CNTK built-in composite minibatch source which is used to
+    stream data into the network.
 
     Args:
-        config (dict): a dictionary containing all the key-value configuration entries.
+        config (dict): a dictionary containing all the key-value configuration
+        entries.
 
     Returns:
         cntk.io.MinibatchSource:
@@ -306,52 +341,68 @@ def _minibatch_source(config):
     cntk_dict = _py_dict_to_cntk_dict(config)
     return cntk_py.create_composite_minibatch_source(cntk_dict)
 
+
 class _ReaderConfig(dict):
+
     '''
     Reader configuration.
 
     Args:
         deserializers ('list', defaults to `None`): list of deserializers
          (:class:`ImageDeserializer` for now).
-        randomize (`bool`, defaults to `True`): randomize images before every epoch
-        randomization_window (int): size of window that reader will shuffle, ignored if `randomize`
+        randomize (`bool`, defaults to `True`): randomize images before every
+          epoch
+        randomization_window (int): size of window that reader will shuffle,
+          ignored if `randomize` is `False`
+        sample_based_randomization_window (bool, defaults to `False`):
+          specifies how to interpret `randomization_range`. If `True`, the size
+          of the randomization window is interpreted as a certain number of
+          samples, otherwise -- as a number of chunks. Similarly to
+          `randomization_window`, this parameter is ignored, when `randomize`
           is `False`
-        sample_based_randomization_window (bool, defaults to `False`): specifies how to interpret
-          `randomization_range`. If `True`, the size of the randomization window is interpreted as a certain
-          number of samples, otherwise -- as a number of chunks. Similarly to `randomization_window`,
-          this parameter is ignored, when `randomize` is `False`
-        epoch_size (`int`, defaults to `cntk.io.INFINITELY_REPEAT`): number of samples as a scheduling unit.
+        epoch_size (`int`, defaults to `cntk.io.INFINITELY_REPEAT`): number of
+          samples as a scheduling unit.
           Parameters in the schedule change their values every `epoch_size`
-          samples. If no `epoch_size` is provided, this parameter is substituted
-          by the size of the full data sweep with infinte repeat, in which case the scheduling unit is
-          the entire data sweep (as indicated by the MinibatchSource) and parameters
+          samples. If no `epoch_size` is provided, this parameter is
+          substituted by the size of the full data sweep with infinte repeat,
+          in which case the scheduling unit is the entire data sweep (as
+          indicated by the MinibatchSource) and parameters
           change their values on the sweep-by-sweep basis specified by the schedule. **Important:** `click here <https://github.com/Microsoft/CNTK/wiki/BrainScript-epochSize-and-Python-epoch_size-in-CNTK>`_ for a full description of this parameter. 
-        distributed_after (int, defaults to `cntk.io.INFINITE_SAMPLES`): sample count after which reader becomes distributed
-        multithreaded_deserializer (`bool`, defaults to `None`): using multi threaded deserializer
-        frame_mode (`bool`, defaults to `False`): Specifies if data should be randomized and returned at the frame
-         or sequence level. When  true , input sequence are split into frames.
-        truncation_length (`int`): Specifies the truncation length in samples for BPTT (positive integer). When using truncation,
-         frame mode cannot be used at the same time.
+        distributed_after (int, defaults to `cntk.io.INFINITE_SAMPLES`): sample
+          count after which reader becomes distributed
+        multithreaded_deserializer (`bool`, defaults to `None`): using multi
+          threaded deserializer
+        frame_mode (`bool`, defaults to `False`): Specifies if data should be
+          randomized and returned at the frame or sequence level. When true,
+          input sequence are split into frames.
+        truncation_length (`int`): Specifies the truncation length in samples
+          for BPTT (positive integer). When using truncation, frame mode cannot
+          be used at the same time.
     '''
+
     def __init__(self,
-        deserializers=None,
-        randomize=True,
-        randomization_window=DEFAULT_RANDOMIZATION_WINDOW_IN_CHUNKS,
-        sample_based_randomization_window=False,
-        epoch_size=INFINITELY_REPEAT,
-        distributed_after=INFINITE_SAMPLES,
-        multithreaded_deserializer=None,
-        frame_mode=False,
-        truncated=False,
-        truncation_length=0):
-        self['epochSize'] = cntk_py.SizeTWrapper(epoch_size) # force to store in size_t
+                 deserializers=None,
+                 randomize=True,
+                 randomization_window=DEFAULT_RANDOMIZATION_WINDOW_IN_CHUNKS,
+                 sample_based_randomization_window=False,
+                 epoch_size=INFINITELY_REPEAT,
+                 distributed_after=INFINITE_SAMPLES,
+                 multithreaded_deserializer=None,
+                 frame_mode=False,
+                 truncated=False,
+                 truncation_length=0):
+        self['epochSize'] = cntk_py.SizeTWrapper(
+            epoch_size)  # force to store in size_t
         if not isinstance(deserializers, (list, tuple)):
             deserializers = [deserializers]
         self['deserializers'] = self.deserializers = deserializers or []
         self['randomize'] = randomize
-        self['randomizationWindow'] = cntk_py.SizeTWrapper(randomization_window)
-        self['sampleBasedRandomizationWindow'] = sample_based_randomization_window
-        self['distributedAfterSampleCount'] = cntk_py.SizeTWrapper(distributed_after)
+        self['randomizationWindow'] = cntk_py.SizeTWrapper(
+            randomization_window)
+        self[
+            'sampleBasedRandomizationWindow'] = sample_based_randomization_window
+        self['distributedAfterSampleCount'] = cntk_py.SizeTWrapper(
+            distributed_after)
         if multithreaded_deserializer is not None:
             self['multiThreadedDeserialization'] = multithreaded_deserializer
 
@@ -359,7 +410,8 @@ class _ReaderConfig(dict):
             self['truncated'] = True
             self['truncationLength'] = cntk_py.SizeTWrapper(truncation_length)
             if frame_mode:
-                raise ValueError("FrameMode and truncated BPTT are mutually exclusive.")
+                raise ValueError(
+                    "FrameMode and truncated BPTT are mutually exclusive.")
         self['frameMode'] = frame_mode
 
     @typemap
@@ -367,7 +419,8 @@ class _ReaderConfig(dict):
         '''
         Creates an instance of :class:`MinibatchSource` from this
         instance, which can be used to feed data into the `eval()` methods of
-        the graph nodes or the `train_minibatch()` of :class:`~cntk.train.trainer.Trainer`.
+        the graph nodes or the `train_minibatch()` of
+        :class:`~cntk.train.trainer.Trainer`.
 
         Returns:
             cntk.io.MinibatchSource:
@@ -375,43 +428,61 @@ class _ReaderConfig(dict):
         '''
         return _minibatch_source(self)
 
+
 def HTKFeatureDeserializer(streams):
     '''
     Configures the HTK feature reader that reads speech data from scp files.
 
     Args:
-        streams: any dictionary-like object that contains a mapping from stream names
-            to :class:`StreamDef` objects. Each StreamDef object configures a feature stream.
+        streams: any dictionary-like object that contains a mapping from stream
+          names to :class:`StreamDef` objects. Each StreamDef object configures
+          a feature stream.
     '''
     feat = []
     for stream_name, stream in streams.items():
-        if stream.stream_alias is not None: raise ValueError("HTKFeatureDeserializer does not support steam names")
-        if 'scp' not in stream: raise ValueError("No scp files specified for HTKFeatureDeserializer")
+        if stream.stream_alias is not None:
+            raise ValueError(
+                "HTKFeatureDeserializer does not support steam names")
+        if 'scp' not in stream:
+            raise ValueError(
+                "No scp files specified for HTKFeatureDeserializer")
         dimension = stream.dim
         scp_file = stream['scp']
         broadcast = stream['broadcast'] if 'broadcast' in stream else False
-        left_context, right_context = stream.context if 'context' in stream else (0, 0)
-        feat.append(cntk_py.HTKFeatureConfiguration(stream_name, scp_file, dimension, left_context, right_context, broadcast))
+        left_context, right_context = stream.context if 'context' in stream\
+                                                     else (0, 0)
+        htk_config = cntk_py.HTKFeatureConfiguration(stream_name, scp_file,
+                                                     dimension, left_context,
+                                                     right_context, broadcast)
+        feat.append(htk_config)
+
     if len(feat) == 0:
         raise ValueError("no feature streams found")
     return cntk_py.htk_feature_deserializer(feat)
 
+
 def HTKMLFDeserializer(label_mapping_file, streams):
     '''
-    Configures an HTK label reader that reads speech HTK format MLF (Master Label File)
+    Configures an HTK label reader that reads speech HTK format MLF (Master
+    Label File)
 
     Args:
         label_mapping_file (str): path to the label mapping file
-        streams: any dictionary-like object that contains a mapping from stream names
-            to :class:`StreamDef` objects. Each StreamDef object configures a label stream.
+        streams: any dictionary-like object that contains a mapping from stream
+          names to :class:`StreamDef` objects. Each StreamDef object configures
+          a label stream.
     '''
-    if len(streams) != 1: raise ValueError("HTKMLFDeserializer only accepts a single stream")
+    if len(streams) != 1:
+        raise ValueError("HTKMLFDeserializer only accepts a single stream")
     for stream_name, stream in streams.items():
-        if stream.stream_alias is not None: raise ValueError("HTKMLFDeserializer does not support steam names")
+        if stream.stream_alias is not None:
+            raise ValueError("HTKMLFDeserializer does not support steam names")
         dimension = stream.dim
-        if 'mlf' not in stream: raise ValueError("No master label files specified for HTKMLFDeserializer")
+        if 'mlf' not in stream:
+            raise ValueError(
+                "No master label files specified for HTKMLFDeserializer")
         master_label_files = stream['mlf']
-        if not isinstance(master_label_files,list):
+        if not isinstance(master_label_files, list):
             master_label_files = [master_label_files]
         return cntk_py.htk_mlf_deserializer(stream_name, label_mapping_file, dimension, master_label_files)
 
@@ -436,7 +507,8 @@ def ImageDeserializer(filename, streams):
     '''
     image_stream_name = None
 
-    # streams with the same name are not allowed, make sure the default is unique.
+    # streams with the same name are not allowed, make sure the default is
+    # unique.
     label_stream_name = '_ignore_labels_' + str(uuid.uuid1())
     num_labels = 2
     transforms = []
@@ -450,14 +522,21 @@ def ImageDeserializer(filename, streams):
             label_stream_name = key
             num_labels = s.dim
         else:
-            raise ValueError("ImageDeserializer: invalid field name '{}', allowed are 'image' and 'label'".format(alias))
+            raise ValueError(
+                "ImageDeserializer: invalid field name '{}', allowed are "
+                "'image' and 'label'".format(alias))
     if image_stream_name is None:
-        raise ValueError("ImageDeserializer: stream name ('image' or 'label') must be specified")
-    return cntk_py.image_deserializer(filename, label_stream_name, num_labels, image_stream_name, transforms)
+        raise ValueError(
+            "ImageDeserializer: stream name ('image' or 'label') must be "
+            "specified")
+    return cntk_py.image_deserializer(filename, label_stream_name, num_labels,
+                                      image_stream_name, transforms)
+
 
 def CTFDeserializer(filename, streams):
     '''
-    Configures the CNTK text-format reader that reads text-based files with lines of the form::
+    Configures the CNTK text-format reader that reads text-based files with
+    lines of the form::
 
         [Sequence_Id] (Sample)+
 
@@ -471,14 +550,19 @@ def CTFDeserializer(filename, streams):
     See also:
         `CNTKTextReader format <https://github.com/microsoft/cntk/wiki/BrainScript-CNTKTextFormat-Reader>`_
     '''
-    for k,s in streams.items():
+    for k, s in streams.items():
         if s.stream_alias is None:
-            raise ValueError("CTFDeserializer: stream name for key %s must be specified"%(k))
-    sc = [cntk_py.StreamConfiguration(k, s.dim, s.is_sparse, s.stream_alias) for k,s in streams.items()]
+            raise ValueError("CTFDeserializer: stream name for key %s must be "
+                             "specified" % k)
+    sc = [cntk_py.StreamConfiguration(
+        k, s.dim, s.is_sparse, s.stream_alias) for k, s in streams.items()]
     return cntk_py.ctf_deserializer(filename, sc)
 
 # TODO: this should be a private class; use StreamDef instead
+
+
 class StreamConfiguration(cntk_py.StreamConfiguration):
+
     '''
     Configuration of a stream in a text format reader.
 
@@ -487,21 +571,27 @@ class StreamConfiguration(cntk_py.StreamConfiguration):
         dim (int): dimensions of this stream. A text format reader reads data
           as flat arrays. If you need different shapes you can
           :func:`~cntk.ops.reshape` it later.
-        is_sparse (bool, defaults to `False`): whether the provided data is sparse
-          (`False` by default)
+        is_sparse (bool, defaults to `False`): whether the provided data is
+          sparse (`False` by default)
         stream_alias (str, defaults to ''): name of the stream in the file
     '''
+
     def __init__(self, name, dim, is_sparse=False, stream_alias=''):
-        return super(StreamConfiguration, self).__init__(name, dim, is_sparse, stream_alias)
+        return super(StreamConfiguration, self).__init__(name, dim, is_sparse,
+                                                         stream_alias)
 
 # stream definition for use in StreamDefs
-# returns a record { stream_alias, is_sparse, optional shape, optional transforms, optional context, optional scp, optional mlf }
-from cntk.utils import Record
-def StreamDef(field=None, shape=None, is_sparse=False, transforms=None, context=None, scp=None, mlf=None, broadcast=None):
+# returns a record { stream_alias, is_sparse, optional shape, optional
+# transforms, optional context, optional scp, optional mlf }
+
+
+def StreamDef(field=None, shape=None, is_sparse=False, transforms=None,
+              context=None, scp=None, mlf=None, broadcast=None):
     '''
        Configuration of a stream for use with the builtin Deserializers.
        The meanings of some configuration keys have a mild dependency on the
-       exact deserializer, and certain keys are meaningless for certain deserializers.
+       exact deserializer, and certain keys are meaningless for certain
+       deserializers.
 
     Args:
         field (`str`, defaults to `None`): this is the name of the stream
@@ -511,20 +601,23 @@ def StreamDef(field=None, shape=None, is_sparse=False, transforms=None, context=
          * for HTKFeatureDeserializer and HTKMLFDeserializer only the default
            value of None is acceptable
 
-        shape (`int` or `tuple`, defaults to `None`): dimensions of this stream. HTKFeatureDeserializer,
-         HTKMLFDeserializer, and CTFDeserializer read data
-         as flat arrays. If you need different shapes you can
-         :func:`~cntk.ops.reshape` it later.
-        is_sparse (`bool`, defaults to `False`): whether the provided data is sparse.
-         `False` by default, unless mlf is provided.
-        transforms (`list`, defaults to `None`): list of transforms to be applied by the Deserializer.
-         Currently only ImageDeserializer supports transforms.
-        context (`tuple`, defaults to `None`): left and right context to consider when reading in HTK
-         data. Only supported by HTKFeatureDeserializer.
+        shape (`int` or `tuple`, defaults to `None`): dimensions of this
+          stream. HTKFeatureDeserializer, HTKMLFDeserializer, and
+          CTFDeserializer read data as flat arrays. If you need different
+          shapes you can :func:`~cntk.ops.reshape` it later.
+        is_sparse (`bool`, defaults to `False`): whether the provided data is
+          sparse. `False` by default, unless mlf is provided.
+        transforms (`list`, defaults to `None`): list of transforms to be
+          applied by the Deserializer. Currently only ImageDeserializer
+          supports transforms.
+        context (`tuple`, defaults to `None`): left and right context to
+          consider when reading in HTK data. Only supported by
+          HTKFeatureDeserializer.
         scp (`str` or `list`, defaults to `None`): scp files for HTK data
         mlf (`str` or `list`, defaults to `None`): mlf files for HTK data
-        broadcast (`bool`, defaults to `None`): whether the features in this stream should be
-         broadcast to the whole sequence (useful in e.g. ivectors with HTK)
+        broadcast (`bool`, defaults to `None`): whether the features in this
+          stream should be broadcast to the whole sequence (useful in e.g.
+          ivectors with HTK)
     '''
     config = dict(stream_alias=field, is_sparse=is_sparse)
     if shape is not None:
@@ -547,6 +640,7 @@ def StreamDef(field=None, shape=None, is_sparse=False, transforms=None, context=
 # StreamDefs for use in constructing deserializers
 # StreamDefs(query = StreamDef(...), labels = StreamDef(...), ...)
 StreamDefs = Record
+
 
 def _dense_to_str(data):
     return ' '.join(data.ravel(order='C').astype(np.str))
@@ -635,7 +729,8 @@ def sequence_to_cntk_text_format(seq_idx, alias_tensor_map):
                 to_str = _sparse_to_str
             else:
                 raise ValueError(
-                    'expected a tensor (dense) or list of dicts (sparse), but got "%s"' % type(tensor))
+                    'expected a tensor (dense) or list of dicts (sparse), but '
+                    'got "%s"' % type(tensor))
 
             line.append('%s %s' % (alias, to_str(tensor[elem_idx])))
 
