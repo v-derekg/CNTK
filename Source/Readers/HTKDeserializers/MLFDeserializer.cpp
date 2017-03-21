@@ -7,7 +7,7 @@
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 #include <limits>
-#include "MLFDataDeserializer.h"
+#include "MLFDeserializer.h"
 #include "ConfigHelper.h"
 #include "SequenceData.h"
 #include "../HTKMLFReader/htkfeatio.h"
@@ -69,18 +69,18 @@ struct MLFSequenceData : SparseSequenceData
 };
 
 // Base chunk for frame and sequence mode.
-class MLFDataDeserializer::ChunkBase : public Chunk
+class MLFDeserializer::ChunkBase : public Chunk
 {
 protected:
     std::vector<char> m_buffer;
     MLFUtteranceParser m_parser;
     std::vector<bool> m_valid;
 
-    const MLFDataDeserializer& m_parent;
+    const MLFDeserializer& m_parent;
     const ChunkDescriptor& m_descriptor;
 
 public:
-    ChunkBase(const MLFDataDeserializer& parent, const ChunkDescriptor& descriptor, const std::wstring& fileName, StateTablePtr states)
+    ChunkBase(const MLFDeserializer& parent, const ChunkDescriptor& descriptor, const std::wstring& fileName, StateTablePtr states)
         : m_parser(states),
           m_descriptor(descriptor),
           m_parent(parent)
@@ -112,12 +112,12 @@ public:
 };
 
 // Sequence MLF chunk. The time of life always less than the time of life of the parent deserializer.
-class MLFDataDeserializer::SequenceChunk : public MLFDataDeserializer::ChunkBase
+class MLFDeserializer::SequenceChunk : public MLFDeserializer::ChunkBase
 {
     std::vector<std::vector<MLFFrameRange>> m_sequences;
 
 public:
-    SequenceChunk(const MLFDataDeserializer& parent, const ChunkDescriptor& descriptor, const std::wstring& fileName, StateTablePtr states)
+    SequenceChunk(const MLFDeserializer& parent, const ChunkDescriptor& descriptor, const std::wstring& fileName, StateTablePtr states)
         : ChunkBase(parent, descriptor, fileName, states)
     {
         m_sequences.resize(m_descriptor.m_numberOfSequences);
@@ -192,13 +192,13 @@ public:
 };
 
 // MLF chunk. The time of life always less than the time of life of the parent deserializer.
-class MLFDataDeserializer::FrameChunk : public MLFDataDeserializer::ChunkBase
+class MLFDeserializer::FrameChunk : public MLFDeserializer::ChunkBase
 {
     // Actual values of frames.
     std::vector<ClassIdType> m_classIds;
 
 public:
-    FrameChunk(const MLFDataDeserializer& parent, const ChunkDescriptor& descriptor, const std::wstring& fileName, StateTablePtr states)
+    FrameChunk(const MLFDeserializer& parent, const ChunkDescriptor& descriptor, const std::wstring& fileName, StateTablePtr states)
         : ChunkBase(parent, descriptor, fileName, states)
     {
         // Let's also preallocate an big array for filling in class ids for whole chunk,
@@ -271,18 +271,18 @@ public:
     }
 };
 
-MLFDataDeserializer::MLFDataDeserializer(CorpusDescriptorPtr corpus, const ConfigParameters& cfg, bool primary)
+MLFDeserializer::MLFDeserializer(CorpusDescriptorPtr corpus, const ConfigParameters& cfg, bool primary)
     : DataDeserializerBase(primary)
 {
     if (primary)
-        RuntimeError("MLFDataDeserializer currently does not support primary mode.");
+        RuntimeError("MLFDeserializer currently does not support primary mode.");
 
     // TODO: This should be read in one place, potentially given by SGD.
     m_frameMode = (ConfigValue)cfg("frameMode", "true");
 
     argvector<ConfigValue> inputs = cfg("input");
     if (inputs.size() != 1)
-        LogicError("MLFDataDeserializer supports a single input stream only.");
+        LogicError("MLFDeserializer supports a single input stream only.");
 
     std::wstring precision = cfg(L"precision", L"float");;
     m_elementType = AreEqualIgnoreCase(precision, L"float") ? ElementType::tfloat : ElementType::tdouble;
@@ -308,7 +308,7 @@ MLFDataDeserializer::MLFDataDeserializer(CorpusDescriptorPtr corpus, const Confi
     InitializeStream(inputName, m_dimension);
 }
 
-MLFDataDeserializer::MLFDataDeserializer(CorpusDescriptorPtr corpus, const ConfigParameters& labelConfig, const wstring& name)
+MLFDeserializer::MLFDeserializer(CorpusDescriptorPtr corpus, const ConfigParameters& labelConfig, const wstring& name)
     : DataDeserializerBase(false)
 {
     // The frame mode is currently specified once per configuration,
@@ -342,7 +342,7 @@ MLFDataDeserializer::MLFDataDeserializer(CorpusDescriptorPtr corpus, const Confi
 }
 
 // Currently we create a single chunk only.
-void MLFDataDeserializer::InitializeChunkDescriptions(CorpusDescriptorPtr corpus, const ConfigHelper& config, const wstring& stateListPath, size_t dimension)
+void MLFDeserializer::InitializeChunkDescriptions(CorpusDescriptorPtr corpus, const ConfigHelper& config, const wstring& stateListPath, size_t dimension)
 {
     // TODO: Similarly to the old reader, currently we assume all Mlfs will have same root name (key)
     // restrict MLF reader to these files--will make stuff much faster without having to use shortened input files
@@ -396,7 +396,7 @@ void MLFDataDeserializer::InitializeChunkDescriptions(CorpusDescriptorPtr corpus
 
     std::sort(m_chunks.begin(), m_chunks.end());
 
-    fprintf(stderr, "MLFDataDeserializer::MLFDataDeserializer: %" PRIu64 " utterances with %" PRIu64 " frames\n",
+    fprintf(stderr, "MLFDeserializer::MLFDeserializer: %" PRIu64 " utterances with %" PRIu64 " frames\n",
         totalNumSequences,
         totalNumFrames);
 
@@ -428,7 +428,7 @@ void MLFDataDeserializer::InitializeChunkDescriptions(CorpusDescriptorPtr corpus
     }
 }
 
-void MLFDataDeserializer::InitializeStream(const wstring& name, size_t dimension)
+void MLFDeserializer::InitializeStream(const wstring& name, size_t dimension)
 {
     // Initializing stream description - a single stream of MLF data.
     StreamDescriptionPtr stream = make_shared<StreamDescription>();
@@ -440,7 +440,7 @@ void MLFDataDeserializer::InitializeStream(const wstring& name, size_t dimension
     m_streams.push_back(stream);
 }
 
-ChunkDescriptions MLFDataDeserializer::GetChunkDescriptions()
+ChunkDescriptions MLFDeserializer::GetChunkDescriptions()
 {
     ChunkDescriptions chunks;
     chunks.reserve(m_chunks.size());
@@ -456,13 +456,13 @@ ChunkDescriptions MLFDataDeserializer::GetChunkDescriptions()
 }
 
 // Gets sequences for a particular chunk.
-void MLFDataDeserializer::GetSequencesForChunk(ChunkIdType, vector<SequenceDescription>& result)
+void MLFDeserializer::GetSequencesForChunk(ChunkIdType, vector<SequenceDescription>& result)
 {
     UNUSED(result);
     LogicError("Mlf deserializer does not support primary mode - it cannot control chunking.");
 }
 
-ChunkPtr MLFDataDeserializer::GetChunk(ChunkIdType chunkId)
+ChunkPtr MLFDeserializer::GetChunk(ChunkIdType chunkId)
 {
     ChunkPtr result;
     attempt(5, [this, &result, chunkId]()
@@ -479,7 +479,7 @@ ChunkPtr MLFDataDeserializer::GetChunk(ChunkIdType chunkId)
     return result;
 };
 
-bool MLFDataDeserializer::GetSequenceDescriptionByKey(const KeyType& key, SequenceDescription& result)
+bool MLFDeserializer::GetSequenceDescriptionByKey(const KeyType& key, SequenceDescription& result)
 {
     if (key.m_sequence >= m_keyToSequence.size())
         return false;

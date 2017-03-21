@@ -8,7 +8,6 @@
 #include <boost/noncopyable.hpp>
 #include "DataDeserializer.h"
 #include "HTKDataDeserializer.h"
-#include "../HTKMLFReader/biggrowablevectors.h"
 #include "CorpusDescriptor.h"
 #include "MLFUtils.h"
 #include "MLFIndexer.h"
@@ -17,14 +16,14 @@ namespace Microsoft { namespace MSR { namespace CNTK {
 
 // Class represents an MLF deserializer.
 // Provides a set of chunks/sequences to the upper layers.
-class MLFDataDeserializer : public DataDeserializerBase, boost::noncopyable
+class MLFDeserializer : public DataDeserializerBase, boost::noncopyable
 {
 public:
     // Expects new configuration.
-    MLFDataDeserializer(CorpusDescriptorPtr corpus, const ConfigParameters& config, bool primary);
+    MLFDeserializer(CorpusDescriptorPtr corpus, const ConfigParameters& config, bool primary);
 
     // TODO: Should be removed, when all readers go away, expects configuration in a legacy mode.
-    MLFDataDeserializer(CorpusDescriptorPtr corpus, const ConfigParameters& config, const std::wstring& streamName);
+    MLFDeserializer(CorpusDescriptorPtr corpus, const ConfigParameters& config, const std::wstring& streamName);
 
     // Retrieves sequence description by its key. Used for deserializers that are not in "primary"/"driving" mode.
     bool GetSequenceDescriptionByKey(const KeyType& key, SequenceDescription& s) override;
@@ -36,8 +35,6 @@ public:
     virtual void GetSequencesForChunk(ChunkIdType chunkId, std::vector<SequenceDescription>& s) override;
 
     // Retrieves a chunk with data.
-    // TODO: Currently it is a single chunk => all labels are loaded into memory.
-    // TODO: After we switch the timeline to work in chunks, we will also introduce chunking of labels.
     virtual ChunkPtr GetChunk(ChunkIdType) override;
 
 private:

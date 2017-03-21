@@ -7,7 +7,7 @@
 #include "HTKMLFReader.h"
 #include "Config.h"
 #include "HTKDataDeserializer.h"
-#include "MLFDataDeserializer.h"
+#include "MLFDeserializer.h"
 #include "ConfigHelper.h"
 #include "Bundler.h"
 #include "StringUtil.h"

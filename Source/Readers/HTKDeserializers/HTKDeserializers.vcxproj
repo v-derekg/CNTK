@@ -98,7 +98,7 @@
     <ClInclude Include="ConfigHelper.h" />
     <ClInclude Include="HTKDataDeserializer.h" />
     <ClInclude Include="HTKMLFReader.h" />
-    <ClInclude Include="MLFDataDeserializer.h" />
+    <ClInclude Include="MLFDeserializer.h" />
     <ClInclude Include="MLFUtils.h" />
     <ClInclude Include="MLFIndexer.h" />
     <ClInclude Include="stdafx.h" />
@@ -114,7 +114,7 @@
     </ClCompile>
     <ClCompile Include="HTKDataDeserializer.cpp" />
     <ClCompile Include="HTKMLFReader.cpp" />
-    <ClCompile Include="MLFDataDeserializer.cpp" />
+    <ClCompile Include="MLFDeserializer.cpp" />
     <ClCompile Include="MLFUtils.cpp" />
     <ClCompile Include="MLFIndexer.cpp" />
     <ClCompile Include="stdafx.cpp">
