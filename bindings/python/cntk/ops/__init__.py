@@ -12,7 +12,7 @@ from . import sequence
 from .functions import CloneMethod, Function, load_model
 from .variables import Variable, Parameter, Constant
 from ..utils import get_data_type
-from cntk.internal import sanitize_input, sanitize_shape, sanitize_axis, sanitize_dynamic_axes
+from cntk.internal import sanitize_input, sanitize_shape, sanitize_axis, sanitize_axis_list, sanitize_dynamic_axes
 from cntk.internal import typemap
 from ..axis import Axis
 from .. import cntk_py
@@ -1949,7 +1949,7 @@ def transpose(x, axis1=0, axis2=1, name=''):
 @typemap
 def slice(x, axis, begin_index, end_index, name=''):
     '''
-    Slice the input along an axis.
+    Slice the input along one or multiple axes.
 
     Example:
         >>> # slice using input variable
@@ -2009,7 +2009,9 @@ def slice(x, axis, begin_index, end_index, name=''):
     '''
     from cntk.cntk_py import slice
     x = sanitize_input(x)
-    axis = sanitize_axis(axis)
+    axis = sanitize_axis_list(axis)
+    begin_index = sanitize_shape(begin_index)
+    end_index = sanitize_shape(end_index)
     return slice(x, axis, begin_index, end_index, name)
 
 # TODO: enable when it is exposed in c++
