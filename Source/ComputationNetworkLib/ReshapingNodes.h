@@ -492,21 +492,21 @@ public:
     size_t BeginIndex(int idx) const 
     {
         if (idx >= (int)m_axis.size())
-            InvalidArgument("Slice BeginIndex call with invalid index (%d) >= axis size (%u)", idx, m_axis.size()); 
+            InvalidArgument("Slice BeginIndex call with invalid index (%d) >= axis size (%d)", idx, (int)m_axis.size()); 
         return m_beginIndex[idx] >= 0 ? (size_t)m_beginIndex[idx] : (size_t)(m_beginIndex[idx] + InputRef(0).GetSampleLayout()[m_axis[idx] - 1]); 
     }
     std::vector<int> EndIndex() const { return m_endIndex; }
     size_t EndIndex(int idx)   const 
     {
         if (idx >= (int)m_axis.size())
-            InvalidArgument("Slice EndIndex call with invalid index (%d) >= axis size (%u)", idx, m_axis.size());
+            InvalidArgument("Slice EndIndex call with invalid index (%d) >= axis size (%d)", idx, (int)m_axis.size());
         return m_endIndex[idx]   >  0 ? (size_t)m_endIndex[idx] : (size_t)(m_endIndex[idx] + InputRef(0).GetSampleLayout()[m_axis[idx] - 1]); 
     }
     std::vector<int> Axis() const { return m_axis; }
     int Axis(int idx) const 
     { 
         if (idx >= (int)m_axis.size())
-            InvalidArgument("Slice Axis call with invalid index (%d) >= axis size (%u)", idx, m_axis.size());
+            InvalidArgument("Slice Axis call with invalid index (%d) >= axis size (%d)", idx, (int)m_axis.size());
         return m_axis[idx]; 
     }
 
