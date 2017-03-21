@@ -435,7 +435,7 @@ public:
         : Base(deviceId, name), m_beginIndex(beginIndex), m_endIndex(endIndex), m_axis(axis)
     {
         if (m_beginIndex.size() != m_endIndex.size() || m_beginIndex.size() != m_axis.size())
-            InvalidArgument("%ls %ls operation: invalid size of beginIndex (%u), endIndx (%u) and axis (%u). They must agree.", NodeName().c_str(), OperationName().c_str(), m_beginIndex.size(), m_endIndex.size(), m_axis.size());
+            InvalidArgument("%ls %ls operation: invalid size of beginIndex (%d), endIndx (%d) and axis (%d). They must agree.", NodeName().c_str(), OperationName().c_str(), (int)m_beginIndex.size(), (int)m_endIndex.size(), (int)m_axis.size());
     }
 
     SliceNode(const ScriptableObjects::IConfigRecordPtr configp)
