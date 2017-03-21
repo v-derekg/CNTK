@@ -66,6 +66,7 @@ class NDArrayView(cntk_py.NDArrayView):
                             ' and not %s' % type(np_array))
 
         if not _is_c_contiguous(np_array):
+            import pdb; pdb.set_trace()
             warnings.warn('data is not C contiguous; rearrange your '
                           'data/computation to avoid costly data conversions',
                           RuntimeWarning)
@@ -423,6 +424,7 @@ class Value(cntk_py.Value):
             raise ValueError('input must be a list of list of integers')
 
         if data_type != int:
+            #import pdb; pdb.set_trace()
             raise ValueError('supplied data to one_hot() must be of type integer'
                              ' and not "%s" since it is index data.' % data_type)
 

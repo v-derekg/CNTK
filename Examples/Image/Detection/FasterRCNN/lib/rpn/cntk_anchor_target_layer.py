@@ -61,7 +61,8 @@ class AnchorTargetLayer(UserFunction):
         A = self._num_anchors
         # labels
         ##top[0].reshape(1, 1, A * height, width)
-        labelShape = (1, 1, A * height, width)
+        #labelShape = (1, 1, A * height, width)
+        labelShape = (1, A, height, width)
         # Comment: this layer uses encoded labels, while in CNTK we mostly use one hot labels
         # --- labelShape = (1, A * 2, height, width)
         # bbox_targets
@@ -93,7 +94,7 @@ class AnchorTargetLayer(UserFunction):
         # map of shape (..., H, W)
         height, width = bottom[0].data.shape[-2:]
         # GT boxes (x1, y1, x2, y2, label)
-        gt_boxes = bottom[1].data
+        gt_boxes = bottom[1][0,:] #.data
         # im_info
         #im_info = bottom[2].data[0, :]
         im_info = self._im_info
@@ -104,7 +105,7 @@ class AnchorTargetLayer(UserFunction):
             print ('scale: {}'.format(im_info[2]))
             print ('height, width: ({}, {})'.format(height, width))
             print ('rpn: gt_boxes.shape', gt_boxes.shape)
-            print ('rpn: gt_boxes', gt_boxes)
+            #print ('rpn: gt_boxes', gt_boxes)
 
         # 1. Generate proposals from bbox deltas and shifted anchors
         shift_x = np.arange(0, width) * self._feat_stride
@@ -239,16 +240,25 @@ class AnchorTargetLayer(UserFunction):
 
         # labels
         labels = labels.reshape((1, height, width, A)).transpose(0, 3, 1, 2)
-        labels = labels.reshape((1, 1, A * height, width))
+        #labels = labels.reshape((1, 1, A * height, width))
+        #labels = labels.reshape((1, A, height, width))
+
+        # !!! TODO: the following four have to be checked. Doing loss functions first.
+        #labels_as_int = [i.item() for i in labels.astype(int)]
+        #labels_dense = np.eye(self._num_classes, dtype=np.float32)[labels_as_int]
+        #labels_dense.shape = (1,) + labels_dense.shape # batch axis
+        #outputs[self.outputs[0]] = labels_dense
+
         # top[0].reshape(*labels.shape)
         # top[0].data[...] = labels
-        outputs[self.outputs[0]] = labels
+        outputs[self.outputs[0]] = np.ascontiguousarray(labels)
 
         # bbox_targets
         bbox_targets = bbox_targets.reshape((1, height, width, A * 4)).transpose(0, 3, 1, 2)
         # top[1].reshape(*bbox_targets.shape)
         # top[1].data[...] = bbox_targets
-        outputs[self.outputs[1]] = bbox_targets
+        #outputs[self.outputs[1]] = bbox_targets
+        outputs[self.outputs[1]] = np.ascontiguousarray(bbox_targets)
 
         # # bbox_inside_weights
         # bbox_inside_weights = bbox_inside_weights \
@@ -275,7 +285,9 @@ class AnchorTargetLayer(UserFunction):
         # pass
     def backward(self, state, root_gradients, variables):
         """This layer does not propagate gradients."""
-        pass
+        #pass
+        #return np.asarray([])
+        return None
 
     #def reshape(self, bottom, top):
     #    """Reshaping happens during the call to forward."""

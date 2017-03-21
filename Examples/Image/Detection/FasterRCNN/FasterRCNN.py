@@ -15,8 +15,8 @@ sys.path.append(os.path.join(abs_path, "lib", "rpn"))
 sys.path.append(os.path.join(abs_path, "lib", "nms"))
 sys.path.append(os.path.join(abs_path, "lib", "nms", "gpu"))
 
-import cntk
-from cntk import Trainer, UnitType, load_model
+#import cntk
+from cntk import Trainer, UnitType, load_model, reshape
 from cntk.layers import Placeholder, Constant, Convolution
 from cntk.graph import find_by_name, plot
 from cntk.initializer import glorot_uniform
@@ -24,14 +24,15 @@ from cntk.io import MinibatchSource, ImageDeserializer, CTFDeserializer, StreamD
 from cntk.io.transforms import *
 from cntk.learner import momentum_sgd, learning_rate_schedule, momentum_as_time_constant_schedule
 from cntk.ops import input_variable, parameter, cross_entropy_with_softmax, classification_error, times, combine, relu, softmax
-from cntk.ops import roipooling, argmax, abs, minus, reduce_sum #, splice
+from cntk.ops import roipooling, reduce_sum
 from cntk.ops.functions import CloneMethod
 from cntk.utils import log_number_of_parameters, ProgressPrinter
-from cntk.losses import squared_error
 from cntk import user_function, Axis
 from lib.rpn.cntk_anchor_target_layer import AnchorTargetLayer
 from lib.rpn.cntk_proposal_layer import ProposalLayer
 from lib.rpn.cntk_proposal_target_layer import ProposalTargetLayer
+from lib.rpn.cntk_smoothL1_loss import SmoothL1Loss
+from lib.rpn.cntk_binary_log_loss import BinaryLogLossWithIgnore
 
 ###############################################################
 ###############################################################
@@ -102,10 +103,8 @@ def create_mb_source(img_height, img_width, img_channels, n_rois, data_path, dat
 # Defines the Faster R-CNN network model for detecting objects in images
 def faster_rcnn_predictor(features, gt_boxes, n_classes):
     im_info = [image_width, image_height, 1]
-    #argmax_labels = argmax(gt_labels, axis=1)
-    #gt_boxes = cntk.ops.splice(cntk_gt_boxes, argmax_labels, axis=1)
 
-    # Load the pretrained classification net and find nodes
+    # Load the pre-trained classification net and find nodes
     loaded_model = load_model(base_model_file)
     feature_node = find_by_name(loaded_model, feature_node_name)
     conv_node    = find_by_name(loaded_model, last_conv_node_name)
@@ -125,24 +124,19 @@ def faster_rcnn_predictor(features, gt_boxes, n_classes):
     rpn_cls_score = Convolution((1,1), 18, activation=None) (rpn_conv_3x3) # 2(bg/fg) * 9(anchors)
     rpn_bbox_pred = Convolution((1,1), 36, activation=None) (rpn_conv_3x3) # 4 * 9(anchors) # ??? activation=relu ???
 
+    # reshape predictions per (H, W) position from 18 (9*bg and 9*fg) to (2,9) ( == (bg, fg) per anchor)
+    shp = (2,) + (int(rpn_cls_score.shape[0] / 2),) + rpn_cls_score.shape[-2:]
+    rpn_cls_score_reshape = reshape(rpn_cls_score, shp)
+    rpn_cls_prob = softmax(rpn_cls_score_reshape, axis=0)
+
     # RPN losses
-    #rpn_labels, rpn_bbox_targets = user_function(AnchorTargetLayer(rpn_cls_score, gt_boxes, im_info))
-    atl = user_function(AnchorTargetLayer(rpn_cls_score, gt_boxes, im_info=im_info))
+    # Comment: rpn_cls_prob is only passed to get width and height of the conv feature map ...
+    atl = user_function(AnchorTargetLayer(rpn_cls_prob, gt_boxes, im_info=im_info))
     rpn_labels = atl.outputs[0]
     rpn_bbox_targets = atl.outputs[1]
 
-    #rpn_loss_cls = user_function(SoftmaxWithLoss(rpn_cls_score, rpn_labels, ignore_label=-1))
-    # rpn_loss_cls = cross_entropy_with_softmax(rpn_cls_score, rpn_labels, axis=1) # !!! TODO: use ignore_label = -1
-    # ==> Left operand 'Placeholder('Placeholder542', [#], [1 x 1 x 549 x 61])' shape '[1 x 1 x 549 x 61]'
-    #     is not compatible with right operand 'Placeholder('Placeholder541', [#], [18 x 61 x 61])' shape '[18 x 61 x 61]'.
-    # ==> labels are not one-hot, but indices. cls_scores are one value per class (bg, fg)
-
-    #rpn_loss_bbox = user_function(SmoothL1Loss(rpn_bbox_pred, rpn_bbox_targets))
-    rpn_loss_bbox = reduce_sum(abs(minus(rpn_bbox_pred, rpn_bbox_targets)), axis=1) # !!! TODO: use SmoothL1
-    # ==> Left operand 'Output('Plus660_Output_0', [#], [100 x 1])' shape '[100 x 1]'
-    #     is not compatible with right operand 'Output('ReduceElements531_Output_0', [#], [1 x 1 x 61 x 61])' shape '[1 x 1 x 61 x 61]'.
-    # ==> TODO: reshape to take SmoothL1 per 4-tuple
-    # ==> TODO: find a way to combine loss functions of shapes (100, 1) and (33489,1) (output rois vs anchors per conv-map position)
+    rpn_loss_cls = user_function(BinaryLogLossWithIgnore(rpn_cls_prob, rpn_labels, ignore_label=-1))
+    rpn_loss_bbox = user_function(SmoothL1Loss(rpn_bbox_pred, rpn_bbox_targets))
 
     # ROI proposal
     # - ProposalLayer:
@@ -152,9 +146,7 @@ def faster_rcnn_predictor(features, gt_boxes, n_classes):
     #    Assign object detection proposals to ground-truth targets. Produces proposal
     #    classification labels and bounding-box regression targets.
     #  + adds gt_boxes to candidates and samples fg and bg rois for training
-    rpn_cls_prob = softmax(rpn_cls_score)
     rpn_rois = user_function(ProposalLayer(rpn_cls_prob, rpn_bbox_pred, im_info=im_info))
-    #rois, labels, bbox_targets = user_function(ProposalTargetLayer(rpn_rois, rpn_scores))
     ptl = user_function(ProposalTargetLayer(rpn_rois, gt_boxes))
     rois = ptl.outputs[0]
     labels = ptl.outputs[1]
@@ -177,11 +169,14 @@ def faster_rcnn_predictor(features, gt_boxes, n_classes):
 
     # loss function
     loss_cls = cross_entropy_with_softmax(cls_score, labels, axis=1)
-    #loss_box = user_function(SmoothL1Loss(bbox_pred, bbox_targets))
-    loss_box = reduce_sum(abs(minus(bbox_pred, bbox_targets)), axis=1) # !!! TODO: use SmoothL1
-    #loss = rpn_loss_cls + rpn_loss_bbox + loss_cls + loss_box
-    loss = loss_cls + loss_box
+    loss_box = user_function(SmoothL1Loss(bbox_pred, bbox_targets))
 
+    loss_cls_scalar = reduce_sum(loss_cls)
+    loss_box_scalar = reduce_sum(loss_box)
+    rpn_loss_cls_scalar = reduce_sum(rpn_loss_cls)
+    rpn_loss_bbox_scalar = reduce_sum(rpn_loss_bbox)
+
+    loss = rpn_loss_cls_scalar + rpn_loss_bbox_scalar + loss_cls_scalar + loss_box_scalar
     pred_error = classification_error(cls_score, labels, axis=1)
 
     return cls_score, loss, pred_error
@@ -196,23 +191,18 @@ def train_faster_rcnn(debug_output=False):
     minibatch_source = create_mb_source(image_height, image_width, num_channels, num_rois, base_path, "train")
 
     # Input variables denoting features and labeled ground truth rois (as 5-tuples per roi)
-    image_input = input_variable((num_channels, image_height, image_width), dynamic_axes=[Axis.default_batch_axis()])
-    roi_input   = input_variable((num_rois, 5), dynamic_axes=[Axis.default_batch_axis()])
-    #label_input = input_variable((num_rois, num_classes), dynamic_axes=[Axis.default_batch_axis()])
+    # ??? TODO: why is needs_gradient = False as a default?
+    image_input = input_variable((num_channels, image_height, image_width), dynamic_axes=[Axis.default_batch_axis()], needs_gradient=True)
+    roi_input   = input_variable((num_rois, 5), dynamic_axes=[Axis.default_batch_axis()]) #, needs_gradient=True)
 
     # define mapping from reader streams to network inputs
     input_map = {
         image_input: minibatch_source.streams.features,
-        roi_input: minibatch_source.streams.rois,
-        #label_input: minibatch_source.streams.roiLabels
+        roi_input: minibatch_source.streams.rois
     }
 
     # Instantiate the Faster R-CNN prediction model and loss function
     cls_score, loss, pred_error = faster_rcnn_predictor(image_input, roi_input, num_classes)
-
-    #frcn_output = frcn_predictor(image_input, roi_input, num_classes)
-    #ce = cross_entropy_with_softmax(frcn_output, label_input, axis=1)
-    #pe = classification_error(frcn_output, label_input, axis=1)
     if debug_output:
         plot(loss, os.path.join(abs_path, "graph_frcn.png"))
 
@@ -276,8 +266,6 @@ if __name__ == '__main__':
     os.chdir(base_path)
     model_path = os.path.join(abs_path, "frcn_py.model")
 
-    #import pdb; pdb.set_trace()
-
     # Train only if no model exists yet
     if os.path.exists(model_path) and make_mode:
         print("Loading existing model from %s" % model_path)
@@ -286,6 +274,8 @@ if __name__ == '__main__':
         trained_model = train_faster_rcnn(debug_output=True)
         trained_model.save(model_path)
         print("Stored trained model at %s" % model_path)
+
+    import pdb; pdb.set_trace()
 
     # Evaluate the test set
     eval_faster_rcnn(trained_model)

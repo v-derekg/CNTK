@@ -82,7 +82,8 @@ class ProposalLayer(UserFunction):
 
         # the first set of _num_anchors channels are bg probs
         # the second set are the fg probs, which we want
-        scores = bottom[0][:, self._num_anchors:, :, :]
+        #scores = bottom[0][:, self._num_anchors:, :, :]
+        scores = bottom[0][:,1,:, :, :]
         bbox_deltas = bottom[1]
         im_info = self._im_info
 
@@ -182,8 +183,9 @@ class ProposalLayer(UserFunction):
 
     def backward(self, state, root_gradients):
         # pass
-        return root_gradients
-
+        #pass
+        #return np.asarray([])
+        return None
 
 
 def _filter_boxes(boxes, min_size):

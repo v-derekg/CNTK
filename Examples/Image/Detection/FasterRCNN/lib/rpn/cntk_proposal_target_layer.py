@@ -6,7 +6,7 @@
 # --------------------------------------------------------
 
 #import caffe
-from cntk import output_variable
+from cntk import output_variable, one_hot, times
 from cntk.ops.functions import UserFunction
 import yaml
 import numpy as np
@@ -46,7 +46,7 @@ class ProposalTargetLayer(UserFunction):
         ##top[1].reshape(1, 1)
         #labels_shape = (1, 1)
         # for CNTK the labels shape is [1 x roisPerImage], and mirrored in Python
-        labels_shape = (self._rois_per_image, 1)
+        labels_shape = (self._rois_per_image, self._num_classes)
 
         # bbox_targets
         #top[2].reshape(1, self._num_classes * 4)
@@ -116,15 +116,15 @@ class ProposalTargetLayer(UserFunction):
         # pad with zeros if too few rois were found
         num_found_rois = rois.shape[0]
         if num_found_rois < rois_per_image:
-            rois_padded = np.zeros((rois_per_image, rois.shape[1]))
+            rois_padded = np.zeros((rois_per_image, rois.shape[1]), dtype=np.float32)
             rois_padded[:num_found_rois, :] = rois
             rois = rois_padded
 
-            labels_padded = np.zeros((rois_per_image))
+            labels_padded = np.zeros((rois_per_image), dtype=np.float32)
             labels_padded[:num_found_rois] = labels
             labels = labels_padded
 
-            bbox_targets_padded = np.zeros((rois_per_image, bbox_targets.shape[1]))
+            bbox_targets_padded = np.zeros((rois_per_image, bbox_targets.shape[1]), dtype=np.float32)
             bbox_targets_padded[:num_found_rois, :] = bbox_targets
             bbox_targets = bbox_targets_padded
 
@@ -133,20 +133,25 @@ class ProposalTargetLayer(UserFunction):
         #top[0].data[...] = rois
         rois = rois[:,1:]
         rois.shape = (1,) + rois.shape
-        outputs[self.outputs[0]] = rois
+        outputs[self.outputs[0]] = np.ascontiguousarray(rois)
 
         # classification labels
         #top[1].reshape(*labels.shape)
         #top[1].data[...] = labels
-        labels.shape = (1,) + labels.shape # batch axis
-        labels.shape = labels.shape + (1,) # per roi dimension
-        outputs[self.outputs[1]] = labels
+        #labels.shape = (1,) + labels.shape # batch axis
+        #labels.shape = labels.shape + (1,) # per roi dimension
+        #outputs[self.outputs[1]] = labels
+        labels_as_int = [i.item() for i in labels.astype(int)]
+        labels_dense = np.eye(self._num_classes, dtype=np.float32)[labels_as_int]
+        #labels_dense = np.ascontiguousarray(labels_dense)
+        labels_dense.shape = (1,) + labels_dense.shape # batch axis
+        outputs[self.outputs[1]] = labels_dense
 
         # bbox_targets
         #top[2].reshape(*bbox_targets.shape)
         #top[2].data[...] = bbox_targets
-        bbox_targets.shape = (1,) + bbox_targets.shape
-        outputs[self.outputs[2]] = bbox_targets
+        bbox_targets.shape = (1,) + bbox_targets.shape # batch axis
+        outputs[self.outputs[2]] = np.ascontiguousarray(bbox_targets)
 
         # bbox_inside_weights
         #top[3].reshape(*bbox_inside_weights.shape)
@@ -161,7 +166,10 @@ class ProposalTargetLayer(UserFunction):
         # pass
     def backward(self, state, root_gradients, variables):
         """This layer does not propagate gradients."""
-        pass
+        #pass
+        #import pdb; pdb.set_trace()
+        #return np.asarray([])
+        return None
 
     #def reshape(self, bottom, top):
     #    """Reshaping happens during the call to forward."""
