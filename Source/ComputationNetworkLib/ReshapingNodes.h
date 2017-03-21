@@ -431,9 +431,11 @@ class SliceNode : public ComputationNode<ElemType>, public NumInputs<1>
     static const std::wstring TypeName() { return L"Slice"; }
 
 public:
-    SliceNode(DEVICEID_TYPE deviceId, const wstring& name, std::vector<int> beginIndex = { 0 }, std::vector<int> endIndex = { 0 }, std::vector<int> axis = { 0 })
+    SliceNode(DEVICEID_TYPE deviceId, const wstring& name, std::vector<int> beginIndex = { 0 }, std::vector<int> endIndex = { 0 }, std::vector<int> axis = { 1 })
         : Base(deviceId, name), m_beginIndex(beginIndex), m_endIndex(endIndex), m_axis(axis)
     {
+        if (m_beginIndex.size() != m_endIndex.size() || m_beginIndex.size() != m_axis.size())
+            InvalidArgument("%ls %ls operation: invalid size of beginIndex (%u), endIndx (%u) and axis (%u). They must agree.", NodeName().c_str(), OperationName().c_str(), m_beginIndex.size(), m_endIndex.size(), m_axis.size());
     }
 
     SliceNode(const ScriptableObjects::IConfigRecordPtr configp)
@@ -497,14 +499,14 @@ public:
     size_t EndIndex(int idx)   const 
     {
         if (idx >= (int)m_axis.size())
-            InvalidArgument("Slice BeginIndex call with invalid index (%d) >= axis size (%u)", idx, m_axis.size());
+            InvalidArgument("Slice EndIndex call with invalid index (%d) >= axis size (%u)", idx, m_axis.size());
         return m_endIndex[idx]   >  0 ? (size_t)m_endIndex[idx] : (size_t)(m_endIndex[idx] + InputRef(0).GetSampleLayout()[m_axis[idx] - 1]); 
     }
     std::vector<int> Axis() const { return m_axis; }
     int Axis(int idx) const 
     { 
         if (idx >= (int)m_axis.size())
-            InvalidArgument("Slice BeginIndex call with invalid index (%d) >= axis size (%u)", idx, m_axis.size());
+            InvalidArgument("Slice Axis call with invalid index (%d) >= axis size (%u)", idx, m_axis.size());
         return m_axis[idx]; 
     }
 
@@ -543,11 +545,7 @@ public:
     virtual void /*ComputationNodeBase::*/ Validate(bool isFinalValidationPass) override
     {
         Base::Validate(isFinalValidationPass);
-
         InferMBLayoutFromInputsForStandardCase(isFinalValidationPass);
-
-        if (m_beginIndex.size() != m_endIndex.size() || m_beginIndex.size() != m_axis.size())
-            InvalidArgument("%ls %ls operation: invalid size of beginIndex (%u), endIndx (%u) and axis (%u). They must agree.", NodeName().c_str(), OperationName().c_str(), m_beginIndex.size(), m_endIndex.size(), m_axis.size()); 
 
         auto sampleLayout = Input(0)->GetSampleLayout();
         for (int i = 0; i < (int)m_axis.size(); i++)
